@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/IndustrialCopilot.Api/IndustrialCopilot.Api.csproj" />
+    <Project Path="src/IndustrialCopilot.Application/IndustrialCopilot.Application.csproj" />
+    <Project Path="src/IndustrialCopilot.Domain/IndustrialCopilot.Domain.csproj" />
+    <Project Path="src/IndustrialCopilot.Infrastructure/IndustrialCopilot.Infrastructure.csproj" />
+    <Project Path="src/IndustrialCopilot.Worker/IndustrialCopilot.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/IndustrialCopilot.Application.Tests/IndustrialCopilot.Application.Tests.csproj" />
+    <Project Path="tests/IndustrialCopilot.Domain.Tests/IndustrialCopilot.Domain.Tests.csproj" />
+    <Project Path="tests/IndustrialCopilot.IntegrationTests/IndustrialCopilot.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
