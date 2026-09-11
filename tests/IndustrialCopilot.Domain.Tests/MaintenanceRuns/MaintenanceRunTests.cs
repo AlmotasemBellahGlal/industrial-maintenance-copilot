@@ -16,6 +16,7 @@ public class MaintenanceRunTests
         Assert.Equal(equipmentId, run.EquipmentId);
         Assert.Equal("Pump vibrates excessively", run.ReportedSymptom);
         Assert.Equal(MaintenanceRunStatus.Queued, run.Status);
+        Assert.False(run.IsCancellationRequested);
     }
 
     [Fact]
@@ -56,11 +57,58 @@ public class MaintenanceRunTests
     [InlineData(MaintenanceRunStatus.Queued)]
     [InlineData(MaintenanceRunStatus.Running)]
     [InlineData(MaintenanceRunStatus.WaitingForApproval)]
-    public void CanCancelAnyActiveRun(MaintenanceRunStatus status)
+    public void CancellationRequiresRequestThenAcknowledgementOnAnyActiveRun(MaintenanceRunStatus status)
     {
         var run = CreateInState(status);
-        run.Cancel();
+        AssertRejectedWithoutMutation(run, run.AcknowledgeCancellation);
+        run.RequestCancellation();
+        Assert.True(run.IsCancellationRequested);
+        Assert.Equal(status, run.Status);
+        AssertRejectedWithoutMutation(run, run.RequestCancellation);
+        run.AcknowledgeCancellation();
         Assert.Equal(MaintenanceRunStatus.Cancelled, run.Status);
+        Assert.True(run.IsCancellationRequested);
+        AssertRejectedWithoutMutation(run, run.AcknowledgeCancellation);
+    }
+
+    [Theory]
+    [InlineData(MaintenanceRunStatus.Queued)]
+    [InlineData(MaintenanceRunStatus.Running)]
+    [InlineData(MaintenanceRunStatus.WaitingForApproval)]
+    public void PendingCancellationPreventsNormalForwardProcessing(MaintenanceRunStatus status)
+    {
+        var run = CreateInState(status);
+        run.RequestCancellation();
+        Action[] actions = [run.Start, run.Resume, run.WaitForApproval, run.Complete];
+        foreach (var action in actions) AssertRejectedWithoutMutation(run, action);
+        run.AcknowledgeCancellation();
+        Assert.Equal(MaintenanceRunStatus.Cancelled, run.Status);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RunningRunCanBecomeSafetyBlocked(bool cancellationRequested)
+    {
+        var run = CreateInState(MaintenanceRunStatus.Running);
+        if (cancellationRequested) run.RequestCancellation();
+        run.Block();
+        Assert.Equal(MaintenanceRunStatus.Blocked, run.Status);
+        Assert.Equal(cancellationRequested, run.IsCancellationRequested);
+        AssertRejectedWithoutMutation(run, run.RequestCancellation);
+        AssertRejectedWithoutMutation(run, run.AcknowledgeCancellation);
+    }
+
+    [Fact]
+    public void RunningRunCanFailWhileCancellationIsPending()
+    {
+        var run = CreateInState(MaintenanceRunStatus.Running);
+        run.RequestCancellation();
+        run.Fail();
+        Assert.Equal(MaintenanceRunStatus.Failed, run.Status);
+        Assert.True(run.IsCancellationRequested);
+        AssertRejectedWithoutMutation(run, run.RequestCancellation);
+        AssertRejectedWithoutMutation(run, run.AcknowledgeCancellation);
     }
 
     [Fact]
@@ -76,12 +124,14 @@ public class MaintenanceRunTests
     [InlineData(MaintenanceRunStatus.Queued, nameof(MaintenanceRun.WaitForApproval))]
     [InlineData(MaintenanceRunStatus.Queued, nameof(MaintenanceRun.Complete))]
     [InlineData(MaintenanceRunStatus.Queued, nameof(MaintenanceRun.Fail))]
+    [InlineData(MaintenanceRunStatus.Queued, nameof(MaintenanceRun.Block))]
     [InlineData(MaintenanceRunStatus.Running, nameof(MaintenanceRun.Start))]
     [InlineData(MaintenanceRunStatus.Running, nameof(MaintenanceRun.Resume))]
     [InlineData(MaintenanceRunStatus.WaitingForApproval, nameof(MaintenanceRun.Start))]
     [InlineData(MaintenanceRunStatus.WaitingForApproval, nameof(MaintenanceRun.WaitForApproval))]
     [InlineData(MaintenanceRunStatus.WaitingForApproval, nameof(MaintenanceRun.Complete))]
     [InlineData(MaintenanceRunStatus.WaitingForApproval, nameof(MaintenanceRun.Fail))]
+    [InlineData(MaintenanceRunStatus.WaitingForApproval, nameof(MaintenanceRun.Block))]
     public void InvalidActiveTransitionsThrowRepeatedlyWithoutMutation(MaintenanceRunStatus status, string operation)
     {
         var run = CreateInState(status);
@@ -92,6 +142,7 @@ public class MaintenanceRunTests
             nameof(MaintenanceRun.WaitForApproval) => run.WaitForApproval,
             nameof(MaintenanceRun.Complete) => run.Complete,
             nameof(MaintenanceRun.Fail) => run.Fail,
+            nameof(MaintenanceRun.Block) => run.Block,
             _ => throw new ArgumentException("Unknown test operation.", nameof(operation))
         };
         AssertRejectedWithoutMutation(run, action);
@@ -101,10 +152,12 @@ public class MaintenanceRunTests
     [InlineData(MaintenanceRunStatus.Completed)]
     [InlineData(MaintenanceRunStatus.Cancelled)]
     [InlineData(MaintenanceRunStatus.Failed)]
+    [InlineData(MaintenanceRunStatus.Blocked)]
     public void TerminalStatesRejectEveryOperationIncludingRepeatedTerminalTransitions(MaintenanceRunStatus status)
     {
         var run = CreateInState(status);
-        Action[] actions = [run.Start, run.WaitForApproval, run.Resume, run.Complete, run.Cancel, run.Fail];
+        Action[] actions = [run.Start, run.WaitForApproval, run.Resume, run.Complete,
+            run.RequestCancellation, run.AcknowledgeCancellation, run.Fail, run.Block];
         foreach (var action in actions) AssertRejectedWithoutMutation(run, action);
     }
 
@@ -114,10 +167,12 @@ public class MaintenanceRunTests
         var equipmentId = run.EquipmentId;
         var symptom = run.ReportedSymptom;
         var status = run.Status;
+        var cancellationRequested = run.IsCancellationRequested;
         for (var attempt = 0; attempt < 2; attempt++)
         {
             Assert.Throws<InvalidOperationException>(action);
             Assert.Equal(status, run.Status);
+            Assert.Equal(cancellationRequested, run.IsCancellationRequested);
             Assert.Equal(id, run.Id);
             Assert.Equal(equipmentId, run.EquipmentId);
             Assert.Equal(symptom, run.ReportedSymptom);
@@ -133,7 +188,11 @@ public class MaintenanceRunTests
         {
             case MaintenanceRunStatus.Running: break;
             case MaintenanceRunStatus.WaitingForApproval: run.WaitForApproval(); break;
-            case MaintenanceRunStatus.Cancelled: run.Cancel(); break;
+            case MaintenanceRunStatus.Cancelled:
+                run.RequestCancellation();
+                run.AcknowledgeCancellation();
+                break;
+            case MaintenanceRunStatus.Blocked: run.Block(); break;
             case MaintenanceRunStatus.Failed: run.Fail(); break;
             case MaintenanceRunStatus.Completed: run.Complete(); break;
             default: throw new ArgumentOutOfRangeException(nameof(status));

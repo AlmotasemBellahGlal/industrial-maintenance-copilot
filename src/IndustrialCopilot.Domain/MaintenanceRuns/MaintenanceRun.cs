@@ -6,6 +6,7 @@ public sealed class MaintenanceRun
     public Guid EquipmentId { get; }
     public string ReportedSymptom { get; }
     public MaintenanceRunStatus Status { get; private set; } = MaintenanceRunStatus.Queued;
+    public bool IsCancellationRequested { get; private set; }
 
     public MaintenanceRun(Guid id, Guid equipmentId, string reportedSymptom)
     {
@@ -20,31 +21,43 @@ public sealed class MaintenanceRun
     public void Start()
     {
         EnsureStatus(MaintenanceRunStatus.Queued);
+        EnsureCancellationNotRequested();
         Status = MaintenanceRunStatus.Running;
     }
 
     public void WaitForApproval()
     {
         EnsureStatus(MaintenanceRunStatus.Running);
+        EnsureCancellationNotRequested();
         Status = MaintenanceRunStatus.WaitingForApproval;
     }
 
     public void Resume()
     {
         EnsureStatus(MaintenanceRunStatus.WaitingForApproval);
+        EnsureCancellationNotRequested();
         Status = MaintenanceRunStatus.Running;
     }
 
     public void Complete()
     {
         EnsureStatus(MaintenanceRunStatus.Running);
+        EnsureCancellationNotRequested();
         Status = MaintenanceRunStatus.Completed;
     }
 
-    public void Cancel()
+    public void RequestCancellation()
     {
-        if (Status is not (MaintenanceRunStatus.Queued or MaintenanceRunStatus.Running or MaintenanceRunStatus.WaitingForApproval))
-            throw new InvalidOperationException("Only an active run can be cancelled.");
+        EnsureActive();
+        EnsureCancellationNotRequested();
+        IsCancellationRequested = true;
+    }
+
+    // The caller acknowledges cancellation only after reaching a safe execution boundary.
+    public void AcknowledgeCancellation()
+    {
+        EnsureActive();
+        if (!IsCancellationRequested) throw new InvalidOperationException("Cancellation must be requested before acknowledgement.");
         Status = MaintenanceRunStatus.Cancelled;
     }
 
@@ -52,6 +65,23 @@ public sealed class MaintenanceRun
     {
         EnsureStatus(MaintenanceRunStatus.Running);
         Status = MaintenanceRunStatus.Failed;
+    }
+
+    public void Block()
+    {
+        EnsureStatus(MaintenanceRunStatus.Running);
+        Status = MaintenanceRunStatus.Blocked;
+    }
+
+    private void EnsureActive()
+    {
+        if (Status is not (MaintenanceRunStatus.Queued or MaintenanceRunStatus.Running or MaintenanceRunStatus.WaitingForApproval))
+            throw new InvalidOperationException("Run must be active for this operation.");
+    }
+
+    private void EnsureCancellationNotRequested()
+    {
+        if (IsCancellationRequested) throw new InvalidOperationException("Cancellation has already been requested.");
     }
 
     private void EnsureStatus(MaintenanceRunStatus expected)

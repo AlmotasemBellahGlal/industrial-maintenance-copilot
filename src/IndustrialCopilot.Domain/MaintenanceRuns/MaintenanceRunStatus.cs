@@ -7,5 +7,6 @@ public enum MaintenanceRunStatus
     WaitingForApproval = 3,
     Cancelled = 4,
     Failed = 5,
-    Completed = 6
+    Completed = 6,
+    Blocked = 7
 }
