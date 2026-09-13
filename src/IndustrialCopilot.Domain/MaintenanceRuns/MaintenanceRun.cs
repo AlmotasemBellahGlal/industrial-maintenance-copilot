@@ -25,6 +25,16 @@ public sealed class MaintenanceRun
         Status = MaintenanceRunStatus.Running;
     }
 
+    /// <summary>Restores a validated durable lifecycle snapshot without replay.</summary>
+    public static MaintenanceRun Restore(Guid id, Guid equipmentId, string reportedSymptom,
+        MaintenanceRunStatus status, bool isCancellationRequested)
+    {
+        if (!Enum.IsDefined(status) || (status == MaintenanceRunStatus.Cancelled && !isCancellationRequested)
+            || (status == MaintenanceRunStatus.Completed && isCancellationRequested))
+            throw new ArgumentException("Inconsistent run lifecycle.");
+        return new(id, equipmentId, reportedSymptom) { Status = status, IsCancellationRequested = isCancellationRequested };
+    }
+
     public void WaitForApproval()
     {
         EnsureStatus(MaintenanceRunStatus.Running);

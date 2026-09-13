@@ -7,6 +7,10 @@ public sealed record ApprovalDecision
     public ApprovalDecisionKind Kind { get; }
     public DateTimeOffset DecidedAt { get; }
 
+    /// <summary>Reconstructs a historical observation; aggregate restoration validates its lifecycle context.</summary>
+    public static ApprovalDecision Restore(string supervisorId, int revision, ApprovalDecisionKind kind, DateTimeOffset decidedAt) =>
+        new(supervisorId, revision, kind, decidedAt);
+
     internal ApprovalDecision(string supervisorId, int revision, ApprovalDecisionKind kind, DateTimeOffset decidedAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(supervisorId);

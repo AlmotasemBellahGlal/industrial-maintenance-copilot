@@ -24,6 +24,48 @@ public sealed class WorkOrder
         Content = content;
     }
 
+    /// <summary>Restores trusted stored state without replaying decisions or granting new approval.</summary>
+    public static WorkOrder Restore(Guid id, WorkOrderContent content, int revision, WorkOrderStatus status,
+        int? safetyAssessmentRevision, IEnumerable<SafetyPrerequisite> requirements, IEnumerable<ApprovalDecision> history)
+    {
+        var restored = new WorkOrder(id, content);
+        if (revision < 1 || !Enum.IsDefined(status)) throw new ArgumentException("Invalid revision or lifecycle.");
+        ArgumentNullException.ThrowIfNull(requirements);
+        ArgumentNullException.ThrowIfNull(history);
+        var safety = requirements.ToArray();
+        var approvals = history.ToArray();
+        if (safety.Any(p => p is null) || safety.Select(p => p.Id).Distinct().Count() != safety.Length)
+            throw new ArgumentException("Invalid prerequisite identities.");
+        if (safetyAssessmentRevision is not null && (safetyAssessmentRevision != revision || revision < 2))
+            throw new ArgumentException("Invalid assessment revision.");
+        if (safetyAssessmentRevision is null && (status != WorkOrderStatus.Draft || safety.Length != 0))
+            throw new ArgumentException("Only an empty unassessed draft may lack an assessment.");
+        var previous = 0;
+        foreach (var decision in approvals)
+        {
+            if (decision is null || decision.Revision < 2 || decision.Revision > revision || decision.Revision <= previous
+                || (decision.Kind == ApprovalDecisionKind.EditAndApprove && decision.Revision < Math.Max(3, previous + 2)))
+                throw new ArgumentException("Invalid approval history.");
+            previous = decision.Revision;
+        }
+        var latest = approvals.LastOrDefault();
+        if (status is WorkOrderStatus.Draft or WorkOrderStatus.PendingApproval)
+        {
+            if (latest?.Revision == revision) throw new ArgumentException("Undecided scope has a current decision.");
+        }
+        else if (latest is null || latest.Revision != revision
+            || (status == WorkOrderStatus.Rejected ? latest.Kind != ApprovalDecisionKind.Reject : latest.Kind == ApprovalDecisionKind.Reject))
+            throw new ArgumentException("Lifecycle requires a matching current decision.");
+        if (status == WorkOrderStatus.Dispatched && safety.Any(p => p.IsMandatory && p.Status != SafetyPrerequisiteStatus.Satisfied))
+            throw new ArgumentException("Dispatched work requires satisfied mandatory prerequisites.");
+        restored.Revision = revision;
+        restored.Status = status;
+        restored.SafetyAssessmentRevision = safetyAssessmentRevision;
+        restored.prerequisites = safety;
+        restored.decisions.AddRange(approvals);
+        return restored;
+    }
+
     public void ReplaceContent(int expectedRevision, WorkOrderContent content)
     {
         EnsureNotMaterializingRequirements();

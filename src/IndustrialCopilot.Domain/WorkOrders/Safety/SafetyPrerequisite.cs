@@ -13,6 +13,10 @@ public sealed class SafetyPrerequisite
     public SafetyPrerequisite(Guid id, string description, bool isMandatory)
         : this(id, description, isMandatory, null) { }
 
+    /// <summary>Restores an existing verification, not a new safety assessment.</summary>
+    public static SafetyPrerequisite Restore(Guid id, string description, bool isMandatory, SafetyVerification? verification) =>
+        new(id, description, isMandatory, verification);
+
     private SafetyPrerequisite(Guid id, string description, bool isMandatory, SafetyVerification? verification)
     {
         if (id == Guid.Empty) throw new ArgumentException("Prerequisite identity is required.", nameof(id));
