@@ -7,9 +7,11 @@
     <Project Path="src/IndustrialCopilot.Worker/IndustrialCopilot.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/IndustrialCopilot.Api.Tests/IndustrialCopilot.Api.Tests.csproj" />
     <Project Path="tests/IndustrialCopilot.Application.Tests/IndustrialCopilot.Application.Tests.csproj" />
     <Project Path="tests/IndustrialCopilot.Domain.Tests/IndustrialCopilot.Domain.Tests.csproj" />
     <Project Path="tests/IndustrialCopilot.Infrastructure.Tests/IndustrialCopilot.Infrastructure.Tests.csproj" />
     <Project Path="tests/IndustrialCopilot.IntegrationTests/IndustrialCopilot.IntegrationTests.csproj" />
+    <Project Path="tests/IndustrialCopilot.Worker.Tests/IndustrialCopilot.Worker.Tests.csproj" />
   </Folder>
 </Solution>
