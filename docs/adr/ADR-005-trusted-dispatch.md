@@ -2,6 +2,8 @@
 
 Status: Accepted for Issue #19
 
+Issue #21 supplies the trusted API host and reconciliation scheduling described as future work here; see [ADR-006](ADR-006-api-streaming-reconciliation.md).
+
 ## Problem
 
 A database rollback cannot undo external acceptance. Checking approval, sending,
