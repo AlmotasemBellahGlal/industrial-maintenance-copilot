@@ -235,4 +235,57 @@ public class DispatchTests(KnowledgeDatabase database) : IClassFixture<Knowledge
         Assert.Empty(current.Order.ApprovalHistory); Assert.Null(current.Order.SafetyPrerequisites[0].Verification);
         Assert.Equal(s.Command.Target.ConcurrencyToken,current.ConcurrencyToken);
     }
+    [PostgresFact]
+    public async Task ConfirmationFailureAfterOrderAndRunWritesRollsBackAllInternalState()
+    {
+        var s=await Seed(); var receiver=new Receiver(); var coordinator=new DispatchCoordinator(Attempts,receiver,auth);
+        var attempt=(await Attempts.ReserveAsync(s.Command,default)).Attempt!;
+        // Generated identifiers and UUID only; this trigger exists solely in the isolated test database.
+        var name="fail_confirm_"+Guid.NewGuid().ToString("N");
+        await using(var install=database.Source.CreateCommand($"""
+            CREATE FUNCTION operations.{name}() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF NEW.attempt_id='{attempt.Id:D}'::uuid AND NEW.category='Accepted' THEN
+                    RAISE EXCEPTION 'injected audit persistence failure';
+                END IF;
+                RETURN NEW;
+            END; $$;
+            CREATE TRIGGER {name} BEFORE INSERT ON operations.dispatch_events
+            FOR EACH ROW EXECUTE FUNCTION operations.{name}();
+            """)) await install.ExecuteNonQueryAsync();
+        try
+        {
+            await Assert.ThrowsAsync<OperationalStoreException>(()=>coordinator.DispatchAsync(s.Command,default));
+            Assert.Equal(1,receiver.Effects);
+            Assert.Equal(WorkOrderStatus.Approved,(await Store.GetWorkOrderAsync(attempt.WorkOrderId,default))!.Order.Status);
+            Assert.Equal(MaintenanceRunStatus.WaitingForApproval,(await Store.GetRunAsync(s.Run,default))!.Run.Status);
+            Assert.Equal(DispatchAttemptState.Pending,(await Attempts.GetAsync(attempt.Id,default))!.State);
+        }
+        finally
+        {
+            await using var remove=database.Source.CreateCommand($"DROP TRIGGER {name} ON operations.dispatch_events; DROP FUNCTION operations.{name}();");
+            await remove.ExecuteNonQueryAsync();
+        }
+        Assert.Equal(DispatchAttemptState.Confirmed,(await coordinator.ReconcileAsync(attempt.Id,"trusted-host",default)).Attempt!.State);
+        Assert.Equal(1,receiver.Sends); Assert.Equal(1,receiver.Effects);
+    }
+    [PostgresFact]
+    public async Task EditedApprovalFinalScopeNeedsNewVerificationButNotAnotherApproval()
+    {
+        var s=await Seed(approve:false);
+        var current=(await Store.GetWorkOrderAsync(s.Command.Target.WorkOrderId,default))!;
+        var requirement=new SafetyPrerequisite(Guid.NewGuid(),"final isolation requirement",true);
+        var scope=new ReviewedWorkOrderScope(new(current.Order.Content.EquipmentId,current.Order.Content.ManualId,current.Order.Content.ManualRevisionId,"noise","final repair",[new(1,"reviewed repair")]),[requirement]);
+        var approval=new AuthorizedApprovalService(new PostgresWorkOrderApprovalService(Store,new TestAccessPolicy(),TimeProvider.System),auth);
+        var result=await approval.RecordDecisionAsync(RecordWorkOrderDecisionRequest.EditAndApprove(s.Command.Target,"trusted-host",scope),default);
+        Assert.Equal(3,result.Snapshot!.Target.Revision);
+        var blocked=await Attempts.ReserveAsync(new(result.Snapshot.Target,"trusted-host"),default);
+        Assert.Equal(DispatchGateFailure.Safety,blocked.Failure);
+        var verified=await new PostgresTrustedContext(database.Source,auth).RecordAsync(result.Snapshot.Target,requirement.Id,"trusted-host","physical inspection",true,default);
+        var receiver=new Receiver();
+        var dispatched=await new DispatchCoordinator(Attempts,receiver,auth).DispatchAsync(new(new(current.Order.Id,3,verified.ConcurrencyToken!),"trusted-host"),default);
+        Assert.Equal(DispatchAttemptState.Confirmed,dispatched.Attempt!.State);
+        Assert.Equal(scope.Content,dispatched.Attempt.Content);
+        Assert.Single((await Store.GetWorkOrderAsync(current.Order.Id,default))!.Order.ApprovalHistory);
+    }
 }

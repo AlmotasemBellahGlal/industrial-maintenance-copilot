@@ -28,7 +28,7 @@ public class TrustedToolTests
         public Task<SafetyAssessment> AssessAsync(DiagnosticPlan p,WorkOrderProposal? w,CancellationToken ct) {Invocations++; return Task.FromResult(SafetyAssessment.Blocked());}
         public Task<bool> TrySaveAsync(RunTraceSnapshot s,long expected,CancellationToken ct) {Traces.Add(s); return Task.FromResult(true);}
         Task<RunTraceSnapshot?> IRunTraceStore.GetAsync(Guid id,CancellationToken ct)=>Task.FromResult<RunTraceSnapshot?>(null);
-        public Task<DispatchReservation> ReserveAsync(DispatchCommand c,CancellationToken ct) {Reservations++; return Task.FromResult(new DispatchReservation(DispatchGateOutcome.NotDispatchable,null));}
+        public Task<DispatchReservation> ReserveAsync(DispatchCommand c,CancellationToken ct) {Reservations++; return Task.FromResult(new DispatchReservation(DispatchGateOutcome.NotDispatchable,null,DispatchGateFailure.Safety));}
         Task<DispatchAttempt?> IDispatchAttemptStore.GetAsync(Guid id,CancellationToken ct)=>Task.FromResult<DispatchAttempt?>(null);
         public Task<DispatchAttemptSession?> OpenAsync(Guid id,CancellationToken ct)=>throw new InvalidOperationException();
         public Task<ExternalDispatchResult> SendAsync(DispatchAttempt a,CancellationToken ct) {Sends++; throw new InvalidOperationException();}
@@ -59,6 +59,10 @@ public class TrustedToolTests
     {
         var d=new Dependencies(); var result=await Executor(d).ExecuteAsync(Call("dispatch_approved_work_order",new {workOrderId=Guid.NewGuid(),revision=2,concurrencyToken="token"}),Context(),default);
         Assert.Equal(DispatchGateOutcome.NotDispatchable,result.Dispatch!.Outcome); Assert.Equal(1,d.Reservations); Assert.Equal(0,d.Sends);
+        var names=Assert.Single(d.Traces).Steps.Select(s=>s.OperationName);
+        Assert.Contains("authorize_Dispatch_granted",names);
+        Assert.Contains("dispatch_gate_NotDispatchable",names);
+        Assert.Contains("dispatch_gate_failure_Safety",names);
     }
     [Fact]
     public async Task MissingContextActorOnlyAndAuthorizationDenialCannotRead()

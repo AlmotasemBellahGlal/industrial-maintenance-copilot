@@ -60,6 +60,7 @@ public sealed class TrustedToolExecutor(IRetrievalService retrieval,IEquipmentCo
             if(result.Dispatch is { } delivery)
             {
                 observations.Add("dispatch_gate_"+delivery.Outcome);
+                if(delivery.Failure is { } reason) observations.Add("dispatch_gate_failure_"+reason);
                 if(delivery.Attempt is { } attempt) observations.Add("dispatch_attempt_"+attempt.State);
             }
             outcome=result.Outcome; return result;

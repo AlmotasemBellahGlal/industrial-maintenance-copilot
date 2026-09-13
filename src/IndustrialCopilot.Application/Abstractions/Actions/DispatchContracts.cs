@@ -12,10 +12,11 @@ public interface IActionAuthorization
 public enum DispatchAttemptState { Pending=1, Confirmed=2, DefinitivelyFailed=3, Uncertain=4 }
 public enum ExternalDispatchOutcome { Accepted=1, DefinitivelyFailed=2, Uncertain=3 }
 public enum DispatchGateOutcome { Ready=1, NotFound=2, Conflict=3, Forbidden=4, NotDispatchable=5 }
+public enum DispatchGateFailure { RunLifecycle=1, HumanApproval=2, Safety=3 }
 public sealed record DispatchAttempt(Guid Id, Guid WorkOrderId, int Revision, string RequestedToken, string ReservedToken,
     Guid? RunId, string? RunToken, string ActorId, DateTimeOffset ReservedAt, DispatchAttemptState State,
     bool InvocationStarted, string? ExternalReference, string? FailureCategory, WorkOrderContent Content);
-public sealed record DispatchReservation(DispatchGateOutcome Outcome, DispatchAttempt? Attempt);
+public sealed record DispatchReservation(DispatchGateOutcome Outcome, DispatchAttempt? Attempt, DispatchGateFailure? Failure=null);
 public sealed record DispatchCommand
 {
     public WorkOrderReviewTarget Target { get; }

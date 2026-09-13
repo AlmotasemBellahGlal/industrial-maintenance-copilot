@@ -31,7 +31,7 @@ public sealed class PostgresDispatchAttemptStore(NpgsqlDataSource source,IAction
             }
             if(stored.Order.Revision!=command.Target.Revision || stored.ConcurrencyToken!=command.Target.ConcurrencyToken)
                 return new(DispatchGateOutcome.Conflict,null);
-            if(!await Gate(c,t,stored,run,ct)) return new(DispatchGateOutcome.NotDispatchable,null);
+            if(await Gate(c,t,stored,run,ct) is { } failure) return new(DispatchGateOutcome.NotDispatchable,null,failure);
             if(await RunReserved(c,t,stored.MaintenanceRunId,ct)) return new(DispatchGateOutcome.Conflict,null);
             if(await PostgresWorkflowStore.IsReserved(c,t,stored.Order.Id,ct)) return new(DispatchGateOutcome.Conflict,null);
             var token=await PostgresWorkflowStore.Save(c,t,stored.Order,stored.MaintenanceRunId,stored.ConcurrencyToken,ct);
@@ -106,24 +106,24 @@ public sealed class PostgresDispatchAttemptStore(NpgsqlDataSource source,IAction
         }
         return(await PostgresWorkflowStore.Load(c,t,id,true,ct),run);
     }
-    private static async Task<bool> Gate(NpgsqlConnection c,NpgsqlTransaction t,StoredWorkOrder stored,StoredMaintenanceRun? run,CancellationToken ct)
+    private static async Task<DispatchGateFailure?> Gate(NpgsqlConnection c,NpgsqlTransaction t,StoredWorkOrder stored,StoredMaintenanceRun? run,CancellationToken ct)
     {
         var order=stored.Order;
         if(stored.MaintenanceRunId is not null && (run is null || run.Run.IsCancellationRequested
-            || run.Run.Status is not (MaintenanceRunStatus.Running or MaintenanceRunStatus.WaitingForApproval))) return false;
+            || run.Run.Status is not (MaintenanceRunStatus.Running or MaintenanceRunStatus.WaitingForApproval))) return DispatchGateFailure.RunLifecycle;
         // A restored/imported approval is not proof that the human-review service recorded consent.
         await using var proof=Command(c,t,"SELECT token FROM operations.human_approvals WHERE id=@id AND revision=@revision",("id",order.Id),("revision",order.Revision));
-        if(await proof.ExecuteScalarAsync(ct) is not Guid approvedToken) return false;
+        if(await proof.ExecuteScalarAsync(ct) is not Guid approvedToken || order.Status!=WorkOrderStatus.Approved) return DispatchGateFailure.HumanApproval;
         var reviewed=await PostgresWorkflowStore.Load(c,t,order.Id,false,ct,approvedToken);
         if(reviewed is null || reviewed.Order.Content!=order.Content || reviewed.Order.ApprovalHistory.LastOrDefault()!=order.ApprovalHistory.LastOrDefault()
-            || !reviewed.Order.SafetyPrerequisites.Select(p=>(p.Id,p.Description,p.IsMandatory)).SequenceEqual(order.SafetyPrerequisites.Select(p=>(p.Id,p.Description,p.IsMandatory)))) return false;
+            || !reviewed.Order.SafetyPrerequisites.Select(p=>(p.Id,p.Description,p.IsMandatory)).SequenceEqual(order.SafetyPrerequisites.Select(p=>(p.Id,p.Description,p.IsMandatory)))) return DispatchGateFailure.HumanApproval;
         try
         {
             var copy=WorkOrder.Restore(order.Id,order.Content,order.Revision,order.Status,order.SafetyAssessmentRevision,order.SafetyPrerequisites,order.ApprovalHistory);
             copy.Dispatch(copy.Revision); // Pure validation on detached copy; persistence remains Approved.
-            return true;
+            return null;
         }
-        catch(InvalidOperationException) { return false; }
+        catch(InvalidOperationException) { return DispatchGateFailure.Safety; }
     }
     private static async Task<Guid?> BumpRun(NpgsqlConnection c,NpgsqlTransaction t,StoredMaintenanceRun? run,CancellationToken ct)
     {
@@ -193,7 +193,7 @@ public sealed class PostgresDispatchAttemptStore(NpgsqlDataSource source,IAction
             var restarted=await InTransaction(async(c,t)=>
             {
                 var (order,run)=await LockScope(c,t,current.WorkOrderId,ct);
-                if(order is null || order.ConcurrencyToken!=current.ReservedToken || run?.ConcurrencyToken!=current.RunToken || !await Gate(c,t,order,run,ct)) return false;
+                if(order is null || order.ConcurrencyToken!=current.ReservedToken || run?.ConcurrencyToken!=current.RunToken || await Gate(c,t,order,run,ct) is not null) return false;
                 if(await RunReserved(c,t,order.MaintenanceRunId,ct)) return false;
                 var token=await PostgresWorkflowStore.Save(c,t,order.Order,order.MaintenanceRunId,order.ConcurrencyToken,ct);
                 if(token is null) return false;
@@ -217,7 +217,7 @@ public sealed class PostgresDispatchAttemptStore(NpgsqlDataSource source,IAction
                 if(order is null || order.ConcurrencyToken!=current.ReservedToken || run?.ConcurrencyToken!=current.RunToken) throw new InvalidOperationException("Reserved state changed.");
                 if(state==DispatchAttemptState.Confirmed)
                 {
-                    if(!await Gate(c,t,order,run,ct)) throw new InvalidOperationException("Reserved dispatch gate no longer valid.");
+                    if(await Gate(c,t,order,run,ct) is not null) throw new InvalidOperationException("Reserved dispatch gate no longer valid.");
                     order.Order.Dispatch(current.Revision);
                     if(await PostgresWorkflowStore.Save(c,t,order.Order,order.MaintenanceRunId,order.ConcurrencyToken,ct,true) is null) throw new InvalidOperationException("Confirmation conflict.");
                     if(run is not null)
