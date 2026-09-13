@@ -37,7 +37,7 @@ public sealed class ApprovedMaintenanceProcedure
 }
 
 /// <summary>Fail-closed demo policy: exact scoped procedures, not generic industrial safety inference.</summary>
-public sealed class ExactProcedureSafetyPolicy : ISafetyPolicy
+public sealed class ExactProcedureSafetyPolicy : ISafetyPolicy, IExecutableSafetyPolicy
 {
     private readonly ApprovedMaintenanceProcedure[] procedures;
     public ExactProcedureSafetyPolicy(IEnumerable<ApprovedMaintenanceProcedure> procedures)
@@ -59,5 +59,12 @@ public sealed class ExactProcedureSafetyPolicy : ISafetyPolicy
                 && proposal.Actions.Select(a => a.Instruction).SequenceEqual(rule!.WorkInstructions)
                 && proposal.SafetyPrerequisites.All(p => rule.Assessment.Requirements.Any(r => r.Description == p.Description));
         return Task.FromResult(valid ? rule!.Assessment : SafetyAssessment.Blocked());
+    }
+    public Task<SafetyAssessment> AssessAsync(IndustrialCopilot.Domain.WorkOrders.WorkOrderContent content,CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(content); cancellationToken.ThrowIfCancellationRequested();
+        var rule=procedures.SingleOrDefault(p=>p.Candidate.EquipmentId==content.EquipmentId && p.Candidate.DocumentId==content.ManualId && p.Candidate.ManualRevisionId==content.ManualRevisionId);
+        var valid=rule is not null && content.Description==rule.WorkOrderDescription && content.Actions.Select(a=>a.Instruction).SequenceEqual(rule.WorkInstructions);
+        return Task.FromResult(valid?rule!.Assessment:SafetyAssessment.Blocked());
     }
 }
