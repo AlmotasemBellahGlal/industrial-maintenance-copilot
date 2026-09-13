@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 namespace IndustrialCopilot.IntegrationTests.Operations;
 
 public class HttpApprovalTests(KnowledgeDatabase database) : IClassFixture<KnowledgeDatabase>
@@ -26,6 +27,13 @@ public class HttpApprovalTests(KnowledgeDatabase database) : IClassFixture<Knowl
         var equipment=Guid.NewGuid();var manual=Guid.NewGuid();var revision=Guid.NewGuid();var requirement=Guid.NewGuid();var path=Path.GetTempFileName();
         try
         {
+            // A data source's public connection string can omit its password. Reuse the
+            // test server credentials with only the fixture's isolated database name.
+            var connection = new NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("RAG_TEST_POSTGRES"))
+            {
+                Database = new NpgsqlConnectionStringBuilder(database.Source.ConnectionString).Database,
+                IncludeErrorDetail = false
+            }.ConnectionString;
             await File.WriteAllTextAsync(path,JsonSerializer.Serialize(new[]{new{Candidate=new{EquipmentId=equipment,EquipmentName="pump",DocumentId=manual,ManualRevisionId=revision},DiagnosticInstructions=new[]{"inspect"},WorkInstructions=new[]{"repair"},WorkOrderDescription="reviewed",Requirements=new[]{new{Id=requirement,Description="authoritative isolation",IsMandatory=true}}}}));
             var store=new PostgresWorkflowStore(database.Source);var order=new WorkOrder(Guid.NewGuid(),new(equipment,manual,revision,"noise","old scope",[new(1,"old action")]));
             var old=new SafetyPrerequisite(Guid.NewGuid(),"old",true);order.AssessSafety(1,[old]);order.VerifyPrerequisite(2,old.Id,new("old-tech",DateTimeOffset.UtcNow,"old evidence",true));order.SubmitForApproval(2);
@@ -33,7 +41,7 @@ public class HttpApprovalTests(KnowledgeDatabase database) : IClassFixture<Knowl
             await using var app=ApiHost.Build(["--environment","Testing"],b=>
             {
                 b.WebHost.UseUrls("http://127.0.0.1:0");b.Logging.ClearProviders();
-                b.Configuration.AddInMemoryCollection(new Dictionary<string,string?>{["Safety:ProcedureFile"]=path,["ConnectionStrings:Operations"]=database.Source.ConnectionString,["ConnectionStrings:DispatchReceiver"]=database.Source.ConnectionString,["Dispatch:Adapter"]="PostgresInbox",["Authentication:Credentials:0:Actor"]="reviewer",["Authentication:Credentials:0:Secret"]=new('z',32),["Authentication:Credentials:0:Permissions"]="read,approve,verify,dispatch",["Authentication:Credentials:0:EquipmentIds"]=equipment.ToString()});
+                b.Configuration.AddInMemoryCollection(new Dictionary<string,string?>{["Safety:ProcedureFile"]=path,["ConnectionStrings:Operations"]=connection,["ConnectionStrings:DispatchReceiver"]=connection,["Dispatch:Adapter"]="PostgresInbox",["Authentication:Credentials:0:Actor"]="reviewer",["Authentication:Credentials:0:Secret"]=new('z',32),["Authentication:Credentials:0:Permissions"]="read,approve,verify,dispatch",["Authentication:Credentials:0:EquipmentIds"]=equipment.ToString()});
                 b.Services.AddMaintenanceHost(b.Configuration,()=>HostAuthentication.Identity(new HttpContextAccessor().HttpContext),false);
             });
             await app.StartAsync();using var client=new HttpClient{BaseAddress=new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};client.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer",new string('z',32));

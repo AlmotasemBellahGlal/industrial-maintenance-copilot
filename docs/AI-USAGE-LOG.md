@@ -17,6 +17,7 @@
 - Corrected initial configuration deserialization to use explicit configuration DTOs rather than assuming the existing procedure constructor matched stored JSON.
 - Removed unnecessary copied test package references and fixed test compilation errors before validation.
 - Self-review tightened production/remote HTTPS enforcement, required migration-aware readiness, kept unknown external acceptance distinct from successful dispatch, and verified cancellation/backpressure does not leave reasoning running blindly.
+- PostgreSQL CI exposed a test-host connection setup error: rebuilding pools from a public data-source connection string can lose its password. The HTTP test now combines the fixture's isolated database name with the original test-server credentials without logging them. Added active-batch cancellation regression coverage and a safe request correlation logging scope.
 
 ### Verification
 - Built the solution and ran Domain, Application, Infrastructure, API, Worker and full solution tests locally with deterministic provider fakes and real loopback HTTP.

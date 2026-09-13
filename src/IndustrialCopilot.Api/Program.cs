@@ -46,6 +46,7 @@ public static class ApiHost
                 if(incoming.Length>0 && (!Guid.TryParse(incoming,out var valid)||valid==Guid.Empty))throw new ApiProblemException(400,"invalid_correlation");
                 var correlation=incoming.Length==0?Guid.NewGuid():Guid.Parse(incoming);
                 context.Items["correlation"]=correlation;HostAccess.Correlation.Value=correlation;context.Response.Headers["X-Correlation-ID"]=correlation.ToString("D");
+                using var logScope=app.Logger.BeginScope(new Dictionary<string,object>{{"CorrelationId",correlation}});
                 if(!context.Request.IsHttps && context.Request.Path.StartsWithSegments("/api") && !System.Net.IPAddress.IsLoopback(context.Connection.RemoteIpAddress??System.Net.IPAddress.None))throw new ApiProblemException(400,"https_required");
                 if(!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing") && !context.Request.IsHttps && context.Request.Path.StartsWithSegments("/api"))throw new ApiProblemException(400,"https_required");
                 await next(context);

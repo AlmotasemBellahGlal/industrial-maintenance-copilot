@@ -12,6 +12,8 @@ public class ReconciliationTests
         public Guid[] Ids=Enumerable.Range(0,6).Select(_=>Guid.NewGuid()).ToArray();public Guid? FailId;public int Active;public int Peak;public int Sends;public int Queries;
         public readonly System.Collections.Concurrent.ConcurrentDictionary<Guid,DispatchAttemptState> States=new();
         public readonly System.Collections.Concurrent.ConcurrentBag<Guid> Reconciled=[];
+        public readonly TaskCompletionSource Started=new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TimeSpan Delay=TimeSpan.FromMilliseconds(50);
         public Task<IReadOnlyList<Guid>> DiscoverAsync(int size,TimeSpan delay,CancellationToken ct){ct.ThrowIfCancellationRequested();Queries++;return Task.FromResult<IReadOnlyList<Guid>>(Ids.Take(size).ToArray());}
         public Task<bool> AuthorizeAsync(string a,TrustedAction action,Guid id,CancellationToken ct)=>Task.FromResult(true);
         private DispatchAttempt Attempt(Guid id)=>new(id,id,2,"original","reserved",null,null,"host",DateTimeOffset.UtcNow,States.GetOrAdd(id,DispatchAttemptState.Uncertain),true,null,null,new(Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),"noise","repair",[new(1,"inspect")]));
@@ -23,7 +25,8 @@ public class ReconciliationTests
         {
             Reconciled.Add(id);var active=Interlocked.Increment(ref Active);int old;
             do {old=Peak;if(old>=active)break;}while(Interlocked.CompareExchange(ref Peak,active,old)!=old);
-            try {await Task.Delay(50,ct);return (Array.IndexOf(Ids,id)%3) switch{0=>ExternalDispatchResult.Accepted("ticket"),1=>ExternalDispatchResult.Failed(),_=>ExternalDispatchResult.Uncertain()};}
+            Started.TrySetResult();
+            try {await Task.Delay(Delay,ct);return (Array.IndexOf(Ids,id)%3) switch{0=>ExternalDispatchResult.Accepted("ticket"),1=>ExternalDispatchResult.Failed(),_=>ExternalDispatchResult.Uncertain()};}
             finally{Interlocked.Decrement(ref Active);}
         }
         private sealed class Session(Backend owner,DispatchAttempt initial) : DispatchAttemptSession
@@ -52,6 +55,17 @@ public class ReconciliationTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>batch.ExecuteAsync("worker",3,2,TimeSpan.FromSeconds(30),TimeSpan.FromSeconds(1),cancellation.Token));Assert.Equal(0,b.Queries);
         using var worker=new global::IndustrialCopilot.Worker.Worker(batch,new(5),NullLogger<global::IndustrialCopilot.Worker.Worker>.Instance);
         await worker.StartAsync(default);using var shutdown=new CancellationTokenSource(TimeSpan.FromSeconds(2));await worker.StopAsync(shutdown.Token);Assert.Equal(0,b.Queries);
+    }
+    [Theory]
+    [InlineData(1)] [InlineData(2)]
+    public async Task ShutdownCancelsInFlightReconciliationWithoutSendingOrConfirming(int concurrency)
+    {
+        var b=new Backend{Delay=Timeout.InfiniteTimeSpan};var batch=new ReconciliationBatch(b,new(b,b,b));
+        using var shutdown=new CancellationTokenSource();
+        var running=batch.ExecuteAsync("worker",6,concurrency,TimeSpan.FromSeconds(30),TimeSpan.FromSeconds(30),shutdown.Token);
+        await b.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));shutdown.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>running.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(0,b.Active);Assert.Equal(0,b.Sends);Assert.All(b.States.Values,state=>Assert.Equal(DispatchAttemptState.Uncertain,state));
     }
     [Theory]
     [InlineData(0,20,4,30)] [InlineData(30,101,4,30)] [InlineData(30,20,17,30)] [InlineData(30,20,4,0)]
