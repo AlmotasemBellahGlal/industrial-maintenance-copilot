@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Knowledge/Migrations/*.sql" />
+    <EmbeddedResource Include="Operations/Migrations/*.sql" />
   </ItemGroup>
 
 </Project>
