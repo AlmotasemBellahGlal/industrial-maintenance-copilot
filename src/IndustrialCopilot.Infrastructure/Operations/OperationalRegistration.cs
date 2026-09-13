@@ -1,5 +1,6 @@
 using IndustrialCopilot.Application.Abstractions.Approval;
 using IndustrialCopilot.Application.Abstractions.Tracing;
+using IndustrialCopilot.Application.Abstractions.Workflow;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -27,6 +28,7 @@ public static class OperationalRegistration
         services.AddSingleton(policy);
         services.AddSingleton<OperationalSchema>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<PostgresWorkflowStore>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        services.AddSingleton<IWorkflowStore>(p=>p.GetRequiredService<PostgresWorkflowStore>());
         services.AddSingleton<IWorkOrderApprovalService>(p=>new PostgresWorkOrderApprovalService(p.GetRequiredService<PostgresWorkflowStore>(),policy,TimeProvider.System));
         services.AddSingleton<IRunTraceStore>(p=>new PostgresRunTraceStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),policy));
         return services;

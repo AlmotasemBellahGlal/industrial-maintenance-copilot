@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.Text.Json;
+using IndustrialCopilot.Application.Abstractions.Agents.WorkOrders;
+using IndustrialCopilot.Application.Abstractions.Workflow;
 using IndustrialCopilot.Domain.WorkOrders;
 using IndustrialCopilot.Domain.WorkOrders.Safety;
 using IndustrialCopilot.Domain.MaintenanceRuns;
@@ -7,13 +10,54 @@ using static IndustrialCopilot.Infrastructure.Operations.OperationalSql;
 
 namespace IndustrialCopilot.Infrastructure.Operations;
 
-public sealed record StoredWorkOrder(WorkOrder Order, string ConcurrencyToken, Guid? MaintenanceRunId);
-public sealed record StoredMaintenanceRun(MaintenanceRun Run, string ConcurrencyToken);
 
 /// <summary>Trusted persistence boundary. Callers authorize mutations before saving; no dispatch integration.</summary>
-public sealed class PostgresWorkflowStore(NpgsqlDataSource source)
+public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowStore
 {
     internal NpgsqlDataSource Source => source;
+
+    private sealed class PublishConflict : Exception;
+
+    public async Task<bool> TryPublishReviewAsync(WorkOrder order, MaintenanceRun run, string expectedRunToken, WorkOrderProposal proposal, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(order); ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedRunToken);
+        ArgumentNullException.ThrowIfNull(proposal);
+        var copy = WorkOrder.Restore(order.Id, order.Content, order.Revision, order.Status, order.SafetyAssessmentRevision, order.SafetyPrerequisites, order.ApprovalHistory);
+        if (copy.Status != WorkOrderStatus.PendingApproval || copy.ApprovalHistory.Count != 0 || run.Status != MaintenanceRunStatus.WaitingForApproval
+            || run.IsCancellationRequested || run.EquipmentId != copy.Content.EquipmentId)
+            throw new ArgumentException("Only unapproved review scope may be published for a waiting run.");
+        var content = copy.Content;
+        if (proposal.SelectedCandidate.EquipmentId != content.EquipmentId || proposal.SelectedCandidate.DocumentId != content.ManualId
+            || proposal.SelectedCandidate.ManualRevisionId != content.ManualRevisionId || proposal.ReportedSymptom != content.ReportedSymptom
+            || proposal.Description != content.Description || !proposal.Actions.Select(a => new WorkOrderAction(a.Order,a.Instruction)).SequenceEqual(content.Actions))
+            throw new ArgumentException("Persisted scope must match the grounded proposal.");
+        var runId = run.Id;
+        try
+        {
+            return await Run(source, async(c,t) =>
+            {
+                var changed = await Execute(c,t,"UPDATE operations.runs SET status=3,token=@token WHERE id=@id AND token::text=@expected AND status=2 AND NOT cancellation_requested AND equipment_id=@equipment AND symptom=@symptom",ct,
+                    ("id",runId),("token",Guid.NewGuid()),("expected",expectedRunToken),("equipment",copy.Content.EquipmentId),("symptom",copy.Content.ReportedSymptom));
+                if (changed != 1) throw new PublishConflict();
+                if (await Save(c,t,copy,runId,null,ct) is null) throw new PublishConflict();
+                await Execute(c,t,"INSERT INTO operations.work_order_proposals(id,payload) VALUES(@id,CAST(@payload AS jsonb))",ct,
+                    ("id",copy.Id),("payload",JsonSerializer.Serialize(proposal)));
+                return true;
+            },ct);
+        }
+        catch (PublishConflict) { return false; }
+    }
+
+    public Task<WorkOrderProposal?> GetProposalAsync(Guid workOrderId,CancellationToken ct)
+    {
+        if (workOrderId == Guid.Empty) throw new ArgumentException("Work order identity required.");
+        return Run(source,async(c,t) =>
+        {
+            await using var cmd = Command(c,t,"SELECT payload::text FROM operations.work_order_proposals WHERE id=@id",("id",workOrderId));
+            return await cmd.ExecuteScalarAsync(ct) is string json ? JsonSerializer.Deserialize<WorkOrderProposal>(json) : null;
+        },ct);
+    }
 
     public Task<StoredWorkOrder?> GetWorkOrderAsync(Guid id, CancellationToken ct)
     {
