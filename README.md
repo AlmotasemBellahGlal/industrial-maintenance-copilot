@@ -20,17 +20,19 @@ The project follows Clean Architecture principles with the following layers:
 - Infrastructure
 - API
 - Worker
+- Angular Web client (untrusted)
 
 ## Status
 
 Implemented: three specialized agents, sequential orchestration, OpenAI/Ollama
 ports and adapters, keyword/dense/hybrid retrieval over PostgreSQL/pgvector,
 durable work orders and traces, deterministic safety, human approval, four trusted
-tools, idempotent dispatch reservations, REST/SSE API and reconciliation Worker.
+tools, idempotent dispatch reservations, REST/SSE API, reconciliation Worker and
+an Angular operations workspace for diagnosis, review, safety and dispatch.
 
 The API owns active reasoning requests; the Worker recovers unresolved dispatch
-attempts. Generic durable scheduling/resumption of reasoning and a web UI remain
-future work. The demonstration dispatch adapter queues durable tickets, not ERP
+attempts. Generic durable scheduling/resumption of reasoning remains future
+work. The demonstration dispatch adapter queues durable tickets, not ERP
 work or physical execution.
 
 ## Build and run
@@ -53,6 +55,10 @@ Startup intentionally fails without reviewed procedures, selected provider/datab
 configuration and trusted host permissions. No credentials are included. Normal
 tests use deterministic provider fakes; database tests use isolated PostgreSQL in
 CI and skip locally unless `RAG_TEST_POSTGRES` is set.
+
+For the browser workspace, see [Angular setup and demo](docs/FRONTEND-SETUP.md).
+Use Node 26/npm 11, then `npm ci` and `npm start` in `src/IndustrialCopilot.Web`.
+The dashboard uses labelled session activity, not invented server metrics.
 
 See [architecture](docs/ARCHITECTURE.md), [API/Worker ADR](docs/adr/ADR-006-api-streaming-reconciliation.md)
 and [AI usage log](docs/AI-USAGE-LOG.md).
