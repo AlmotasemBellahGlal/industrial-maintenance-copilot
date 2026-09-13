@@ -44,6 +44,7 @@ public sealed class PostgresWorkOrderApprovalService(PostgresWorkflowStore store
             var current=await PostgresWorkflowStore.Load(c,t,target.WorkOrderId,true,ct);
             if(current is null) return Failure(ApprovalOperationOutcome.NotFound);
             var order=current.Order;
+            if(await PostgresWorkflowStore.IsReserved(c,t,order.Id,ct)) return Failure(ApprovalOperationOutcome.Conflict);
             if(current.ConcurrencyToken!=target.ConcurrencyToken || order.Revision!=target.Revision) return Failure(ApprovalOperationOutcome.Conflict);
             if(order.Status!=(decision is null?WorkOrderStatus.Draft:WorkOrderStatus.PendingApproval)) return Failure(ApprovalOperationOutcome.InvalidState);
             if(order.SafetyAssessmentRevision!=order.Revision) return Failure(ApprovalOperationOutcome.SafetyValidationFailed);
@@ -61,6 +62,9 @@ public sealed class PostgresWorkOrderApprovalService(PostgresWorkflowStore store
                 }
             }
             var token=await PostgresWorkflowStore.Save(c,t,order,current.MaintenanceRunId,current.ConcurrencyToken,ct);
+            if(token is not null && decision is not null)
+                await Execute(c,t,"INSERT INTO operations.human_approvals(id,revision,token) VALUES(@id,@revision,@token)",ct,
+                    ("id",order.Id),("revision",order.Revision),("token",Guid.Parse(token)));
             return token is null?Failure(ApprovalOperationOutcome.Conflict):ApprovalOperationResult.Applied(Snapshot(order,token));
         },ct);
 

@@ -37,7 +37,7 @@ public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowSt
         {
             return await Run(source, async(c,t) =>
             {
-                var changed = await Execute(c,t,"UPDATE operations.runs SET status=3,token=@token WHERE id=@id AND token::text=@expected AND status=2 AND NOT cancellation_requested AND equipment_id=@equipment AND symptom=@symptom",ct,
+                var changed = await Execute(c,t,"UPDATE operations.runs SET status=3,token=@token WHERE id=@id AND token::text=@expected AND status=2 AND NOT cancellation_requested AND equipment_id=@equipment AND symptom=@symptom AND NOT EXISTS(SELECT 1 FROM operations.dispatch_attempts WHERE run_id=@id AND state IN (1,4))",ct,
                     ("id",runId),("token",Guid.NewGuid()),("expected",expectedRunToken),("equipment",copy.Content.EquipmentId),("symptom",copy.Content.ReportedSymptom));
                 if (changed != 1) throw new PublishConflict();
                 if (await Save(c,t,copy,runId,null,ct) is null) throw new PublishConflict();
@@ -74,6 +74,9 @@ public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowSt
         {
             var current = await Load(c,t,copy.Id,true,ct);
             if (current?.ConcurrencyToken != expectedToken) return null;
+            // External acceptance can only be committed by the reserved confirmation boundary.
+            if(copy.Status==WorkOrderStatus.Dispatched || current?.Order.Status==WorkOrderStatus.Dispatched)
+                return null;
             if (current is not null)
             {
                 if (current.MaintenanceRunId != runId) throw new ArgumentException("Run association cannot change.");
@@ -84,8 +87,15 @@ public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowSt
         },ct);
     }
 
-    internal static async Task<string?> Save(NpgsqlConnection c,NpgsqlTransaction t,WorkOrder order,Guid? runId,string? expected,CancellationToken ct)
+    internal static async Task<bool> IsReserved(NpgsqlConnection c,NpgsqlTransaction t,Guid id,CancellationToken ct)
     {
+        await using var command=Command(c,t,"SELECT EXISTS(SELECT 1 FROM operations.dispatch_attempts WHERE work_order_id=@id AND state IN (1,4))",("id",id));
+        return (bool)(await command.ExecuteScalarAsync(ct))!;
+    }
+
+    internal static async Task<string?> Save(NpgsqlConnection c,NpgsqlTransaction t,WorkOrder order,Guid? runId,string? expected,CancellationToken ct,bool dispatchConfirmation=false)
+    {
+        if(!dispatchConfirmation && await IsReserved(c,t,order.Id,ct)) return null;
         var token = Guid.NewGuid();
         int changed;
         if (expected is null)
@@ -125,7 +135,7 @@ public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowSt
         return token.ToString("D");
     }
 
-    internal static async Task<StoredWorkOrder?> Load(NpgsqlConnection c,NpgsqlTransaction t,Guid id,bool locked,CancellationToken ct)
+    internal static async Task<StoredWorkOrder?> Load(NpgsqlConnection c,NpgsqlTransaction t,Guid id,bool locked,CancellationToken ct,Guid? snapshotToken=null)
     {
         Guid token; Guid? runId;
         await using(var head=Command(c,t,"SELECT token,run_id FROM operations.work_orders WHERE id=@id"+(locked?" FOR UPDATE":""),("id",id)))
@@ -134,6 +144,7 @@ public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowSt
             if(!await r.ReadAsync(ct)) return null;
             token=r.GetGuid(0); runId=r.IsDBNull(1)?null:r.GetGuid(1);
         }
+        token=snapshotToken??token;
         int revision,status; int? assessment; Guid equipment,manual,manualRevision; string symptom,description;
         await using(var row=Command(c,t,"SELECT revision,status,assessment_revision,equipment_id,manual_id,manual_revision_id,symptom,description FROM operations.work_order_snapshots WHERE id=@id AND token=@token",("id",id),("token",token)))
         await using(var r=await row.ExecuteReaderAsync(ct))
@@ -180,7 +191,7 @@ public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowSt
             var token=Guid.NewGuid();
             var sql=expectedToken is null
                 ? "INSERT INTO operations.runs VALUES(@id,@equipment,@symptom,@status,@cancel,@token) ON CONFLICT(id) DO NOTHING"
-                : "UPDATE operations.runs SET status=@status,cancellation_requested=@cancel,token=@token WHERE id=@id AND token::text=@expected AND equipment_id=@equipment AND symptom=@symptom";
+                : "UPDATE operations.runs SET status=@status,cancellation_requested=@cancel,token=@token WHERE id=@id AND token::text=@expected AND equipment_id=@equipment AND symptom=@symptom AND NOT EXISTS(SELECT 1 FROM operations.dispatch_attempts WHERE run_id=@id AND state IN (1,4))";
             var count=await Execute(c,t,sql,ct,("id",copy.Id),("equipment",copy.EquipmentId),("symptom",copy.ReportedSymptom),("status",(int)copy.Status),("cancel",copy.IsCancellationRequested),("token",token),("expected",expectedToken));
             return count==1?token.ToString("D"):null;
         },ct);
