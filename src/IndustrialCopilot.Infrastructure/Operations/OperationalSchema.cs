@@ -18,6 +18,9 @@ public sealed class OperationalSchema(NpgsqlDataSource source)
             using var proposalResource = typeof(OperationalSchema).Assembly.GetManifestResourceStream("IndustrialCopilot.Infrastructure.Operations.Migrations.002_proposals.sql")!;
             using var proposalReader = new StreamReader(proposalResource);
             await OperationalSql.Execute(connection, transaction, await proposalReader.ReadToEndAsync(token), token);
+            using var dispatchResource = typeof(OperationalSchema).Assembly.GetManifestResourceStream("IndustrialCopilot.Infrastructure.Operations.Migrations.003_dispatch.sql")!;
+            using var dispatchReader = new StreamReader(dispatchResource);
+            await OperationalSql.Execute(connection, transaction, await dispatchReader.ReadToEndAsync(token), token);
             return true;
         }, token);
     }

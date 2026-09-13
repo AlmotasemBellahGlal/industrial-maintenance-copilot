@@ -11,8 +11,12 @@ public sealed record StoredMaintenanceRun(MaintenanceRun Run, string Concurrency
 public interface IWorkflowStore
 {
     Task<StoredWorkOrder?> GetWorkOrderAsync(Guid id, CancellationToken cancellationToken);
+    /// <summary>Optimistic save. Outstanding Pending/Uncertain dispatch reservations reject mutations.
+    /// Ordinary saves cannot create Dispatched state or rewrite a dispatched order; confirmed external
+    /// acceptance is committed through IDispatchAttemptStore. Detached Domain mutation is not persistence.</summary>
     Task<string?> TrySaveWorkOrderAsync(WorkOrder order, Guid? runId, string? expectedToken, CancellationToken cancellationToken);
     Task<StoredMaintenanceRun?> GetRunAsync(Guid id, CancellationToken cancellationToken);
+    /// <summary>Rejects changes to runs bound to outstanding dispatch reservations, including cancellation intent.</summary>
     Task<string?> TrySaveRunAsync(MaintenanceRun run, string? expectedToken, CancellationToken cancellationToken);
     /// <summary>
     /// Atomically creates a pending, unapproved work order and changes a Running run to WaitingForApproval.
