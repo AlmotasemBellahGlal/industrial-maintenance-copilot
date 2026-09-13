@@ -7,14 +7,34 @@ on:
 
 jobs:
   validate:
-    name: Validate Repository
+    name: Build and test with PostgreSQL knowledge store
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: isolated_ci_only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      RAG_TEST_POSTGRES: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=isolated_ci_only
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify repository
-        run: |
-          echo "Repository checked out successfully"
-          ls -la
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build
+        run: dotnet build
+      - name: Test including isolated pgvector integration tests
+        run: dotnet test --no-build --logger "trx;LogFilePrefix=tests"
