@@ -1,5 +1,29 @@
 # AI Usage Log
 
+## 2026-09-13 — Issue #21 API, streaming and Worker
+
+### Delegated to AI
+- Codex inspected the merged Domain/Application/Infrastructure implementation and implemented the ASP.NET Core host, explicit HTTP DTOs, authenticated resource permissions, SSE observations and bounded reconciliation Worker.
+- Suggested an exact executable-scope safety port and durable bounded discovery rather than moving industrial rules into endpoints or maintaining an in-memory recovery queue.
+- Added host composition/configuration, explicit migration/ingestion commands, setup documentation and ADR-006.
+
+### Human-reviewed decisions
+- The user accepted the two discovered prerequisites: exact WorkOrderContent assessment and bounded discovery of unresolved dispatch attempts.
+- The user explicitly authorized continued implementation, self-review, tests, documentation, commits, push and PR creation without merging. This entry does not claim a human line-by-line review of the resulting implementation.
+
+### AI Mistakes / Corrections
+- Rejected trusting client-supplied safety requirements, fabricating a DiagnosticPlan, duplicating deterministic safety rules in endpoints, and treating actorId as authorization.
+- Edited approval uses a trusted preview plus comparison-only requirement echo; the Application recomputes and uses authoritative requirements at decision time.
+- Corrected initial configuration deserialization to use explicit configuration DTOs rather than assuming the existing procedure constructor matched stored JSON.
+- Removed unnecessary copied test package references and fixed test compilation errors before validation.
+- Self-review tightened production/remote HTTPS enforcement, required migration-aware readiness, kept unknown external acceptance distinct from successful dispatch, and verified cancellation/backpressure does not leave reasoning running blindly.
+
+### Verification
+- Built the solution and ran Domain, Application, Infrastructure, API, Worker and full solution tests locally with deterministic provider fakes and real loopback HTTP.
+- Added isolated PostgreSQL tests for bounded/deferred discovery, concurrent claims, restart after external acceptance, same-key confirmation and authenticated HTTP edited approval/verification/dispatch.
+- Database tests require the CI pgvector service or an explicitly configured isolated local server; no live OpenAI, Ollama or ERP calls are claimed.
+- Final PostgreSQL CI results are recorded in the Issue #21 PR. Existing Microsoft.OpenApi NU1903 warnings are intentionally not fixed in this feature.
+
 ## 2026-09-09
 
 ### Delegated to AI

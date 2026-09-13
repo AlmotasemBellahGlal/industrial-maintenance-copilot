@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Scope: Issue #17
+- Subsequent host/streaming/reconciliation integration: [ADR-006](ADR-006-api-streaming-reconciliation.md). Queue-based reasoning remains future work.
 
 ## Decision
 

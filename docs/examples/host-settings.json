@@ -1,0 +1,25 @@
+{
+  "Dispatch": { "Adapter": "PostgresInbox" },
+  "Streaming": { "Capacity": 32, "WriteTimeoutSeconds": 10 },
+  "Worker": { "IntervalSeconds": 30, "BatchSize": 20, "Concurrency": 4, "AttemptTimeoutSeconds": 30 },
+  "Llm": {
+    "PrimaryProvider": "Ollama",
+    "EmbeddingProvider": "Ollama",
+    "FallbackEnabled": false,
+    "Ollama": {
+      "Endpoint": "http://localhost:11434/",
+      "ChatModel": "REPLACE_WITH_INSTALLED_TOOL_CAPABLE_CHAT_MODEL",
+      "EmbeddingModel": "REPLACE_WITH_INSTALLED_EMBEDDING_MODEL",
+      "RequestTimeoutSeconds": 60,
+      "StreamTimeoutSeconds": 120
+    }
+  },
+  "Knowledge": {
+    "EmbeddingProfile": "maintenance-demo-v1",
+    "EmbeddingRevision": "REPLACE_WITH_PINNED_WEIGHTS_REVISION",
+    "Dimensions": "REPLACE_WITH_MODEL_DIMENSIONS",
+    "ChunkSize": 1200,
+    "Overlap": 200,
+    "HybridCandidates": 100
+  }
+}

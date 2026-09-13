@@ -6,7 +6,62 @@ The diagrams are maintained as source in the repository so that architectural ch
 
 ---
 
-# C4 Architecture
+## Current implemented runtime (Issue #21)
+
+The executable system has three specialized agents, a sequential Application
+orchestrator, OpenAI/Ollama adapters, and keyword/dense/hybrid retrieval using
+PostgreSQL and pgvector. Operational PostgreSQL stores lifecycle, reviewed scope,
+verifications, approval provenance, dispatch reservations and separate traces.
+
+```mermaid
+flowchart LR
+    Client -->|Authenticated REST / SSE| API[API trusted host]
+    API --> Orch[Application orchestrator]
+    Orch --> Agents[Three specialized agents]
+    Agents --> RAG[Scoped RAG / trusted retrieval]
+    Orch --> Safety[Deterministic safety policy]
+    Safety --> Proposal[Pending work order]
+    Proposal --> Review[Human review]
+    Review -->|Edits| Exact[Exact-content safety reassessment]
+    Exact --> Approval[Atomic EditAndApprove]
+    Review --> Approval
+    Approval --> Verification[Authorized physical verification]
+    Verification --> Reservation[Durable dispatch reservation]
+    Reservation --> External[Independent dispatch inbox / adapter]
+    Worker[Reconciliation Worker] -->|Bounded durable discovery| Reservation
+    Worker -->|Same-key reconciliation| External
+```
+
+Current API reasoning is request-owned, with bounded SSE and disconnect
+cancellation. Durable publication stops at WaitingForApproval. The separate
+Worker handles dispatch reconciliation only, using persisted eligibility and
+existing attempt locks; it does not resume interrupted agent pipelines. No durable
+orchestration queue or web UI is implemented yet.
+
+Four trusted capabilities exist: manual evidence retrieval and equipment context
+(read-only), deterministic safety validation, and externally side-effecting
+approved dispatch. No reasoning-agent role receives dispatch authority. HTTP
+identity comes from configured host authentication, never an actorId in a body.
+Approval, physical verification and dispatch have independent equipment-scoped
+permissions. Edited scope is reassessed by IExecutableSafetyPolicy; submitted
+requirements are comparison-only. Pending/Uncertain dispatch freezes persist until
+confirmed acceptance or definitive nonacceptance. Tracing is observational, not
+a source of business authority.
+
+Actual Application ports include ILlmProvider (also embeddings), IRetrievalService,
+IDocumentProcessor, IKnowledgeIndex, IWorkflowStore, IWorkOrderApprovalService,
+ISafetyPolicy, IExecutableSafetyPolicy, IActionAuthorization, IDispatchAttemptStore,
+IExternalDispatch, IReconciliationDiscovery and IRunTraceStore. See
+[ADR-006](adr/ADR-006-api-streaming-reconciliation.md) and
+[host setup/demo](HOST-SETUP.md) for implemented endpoints, configuration and limits.
+
+# C4 target architecture — design reference
+
+The following original diagrams describe the broader target, not a deployment
+inventory. Queue-based reasoning, UI, generic job resumption and illustrative
+repository/queue/embedding port names below remain planning concepts; the current
+runtime and actual port names above take precedence. ADRs retain their original
+issue scope, with later decisions linked explicitly.
 
 ## Level 1 — System Context
 
