@@ -6,8 +6,8 @@ namespace IndustrialCopilot.Infrastructure.AI;
 
 internal static class OpenAiProtocol
 {
-    internal static JsonObject ChatRequest(OpenAiOptions options, CompletionRequest request,
-        bool stream, IReadOnlyList<ToolDefinition>? tools = null)
+    internal static JsonObject ChatRequest(string chatModel, CompletionRequest request,
+        bool stream, bool ollama, IReadOnlyList<ToolDefinition>? tools = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.Messages.Count == 0) throw new ArgumentException("At least one message is required.", nameof(request));
@@ -37,9 +37,9 @@ internal static class OpenAiProtocol
             }
             messages.Add(item);
         }
-        var payload = new JsonObject { ["model"] = options.ChatModel, ["messages"] = messages, ["stream"] = stream, ["n"] = 1 };
+        var payload = new JsonObject { ["model"] = chatModel, ["messages"] = messages, ["stream"] = stream, ["n"] = 1 };
         if (request.Temperature is { } temperature) payload["temperature"] = temperature;
-        if (request.MaxTokens is { } maxTokens) payload["max_completion_tokens"] = maxTokens;
+        if (request.MaxTokens is { } maxTokens) payload[ollama ? "max_tokens" : "max_completion_tokens"] = maxTokens;
         if (stream) payload["stream_options"] = new JsonObject { ["include_usage"] = true };
         if (tools is not null && tools.Count > 0)
         {

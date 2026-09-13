@@ -11,7 +11,10 @@ public enum LlmProviderFailureKind
     InvalidResponse,
     UnsupportedResponse,
     Refused,
-    HttpFailure
+    HttpFailure,
+    TransientTransport,
+    TemporaryRateLimit,
+    QuotaExceeded
 }
 
 /// <summary>A sanitized Infrastructure boundary. Contains no response body or inner exception.
