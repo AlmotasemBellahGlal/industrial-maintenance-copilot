@@ -480,3 +480,13 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local assistant skill installations (design output is tracked separately)
+.agents/
+
+# Angular build and browser-test outputs
+node_modules/
+.angular/
+dist/
+playwright-report/
+test-results/

@@ -6,6 +6,26 @@ on:
       - main
 
 jobs:
+  frontend:
+    name: Angular build, contracts and accessible browser workflows
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/IndustrialCopilot.Web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: src/IndustrialCopilot.Web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
   validate:
     name: Build and test with PostgreSQL knowledge store
     runs-on: ubuntu-latest

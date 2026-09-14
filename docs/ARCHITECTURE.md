@@ -6,7 +6,7 @@ The diagrams are maintained as source in the repository so that architectural ch
 
 ---
 
-## Current implemented runtime (Issue #21)
+## Current implemented runtime (Issues #21 / #23)
 
 The executable system has three specialized agents, a sequential Application
 orchestrator, OpenAI/Ollama adapters, and keyword/dense/hybrid retrieval using
@@ -15,7 +15,7 @@ verifications, approval provenance, dispatch reservations and separate traces.
 
 ```mermaid
 flowchart LR
-    Client -->|Authenticated REST / SSE| API[API trusted host]
+    Client[Angular client — untrusted] -->|Authenticated REST / SSE| API[API trusted host]
     API --> Orch[Application orchestrator]
     Orch --> Agents[Three specialized agents]
     Agents --> RAG[Scoped RAG / trusted retrieval]
@@ -36,7 +36,18 @@ Current API reasoning is request-owned, with bounded SSE and disconnect
 cancellation. Durable publication stops at WaitingForApproval. The separate
 Worker handles dispatch reconciliation only, using persisted eligibility and
 existing attempt locks; it does not resume interrupted agent pipelines. No durable
-orchestration queue or web UI is implemented yet.
+orchestration queue is implemented yet. The Angular client is a separate standalone
+application under `src/IndustrialCopilot.Web`; it never references Domain assemblies.
+
+The client has lazy routes, typed API adapters, Reactive Forms and local signals.
+REST DTOs follow camelCase HTTP contracts; bounded fetch-based SSE explicitly
+normalizes PascalCase envelopes/numeric progress. It never replays the start POST.
+Credentials and observed records stay in memory. Dashboard is session activity
+because the API has no global list endpoint. Approval/verification appear only
+after host responses. Any scope edit invalidates the preview; requirements are
+echoed for comparison and reassessed by the host. Dispatch refresh is GET-only;
+Uncertain remains distinct from success/failure. See [frontend setup](FRONTEND-SETUP.md)
+and the [design system](../design-system/industrial-maintenance-copilot/MASTER.md).
 
 Four trusted capabilities exist: manual evidence retrieval and equipment context
 (read-only), deterministic safety validation, and externally side-effecting
@@ -58,7 +69,7 @@ IExternalDispatch, IReconciliationDiscovery and IRunTraceStore. See
 # C4 target architecture — design reference
 
 The following original diagrams describe the broader target, not a deployment
-inventory. Queue-based reasoning, UI, generic job resumption and illustrative
+inventory. Queue-based reasoning, generic job resumption and illustrative
 repository/queue/embedding port names below remain planning concepts; the current
 runtime and actual port names above take precedence. ADRs retain their original
 issue scope, with later decisions linked explicitly.

@@ -1,5 +1,7 @@
 # API, streaming and reconciliation Worker
 
+The Angular workspace uses these existing contracts. See [frontend setup and end-to-end demo](FRONTEND-SETUP.md) for the development proxy, HTTPS deployment, session credentials and browser workflows.
+
 ## Prerequisites and configuration
 
 Use .NET SDK 10 and PostgreSQL with pgvector (`pgvector/pgvector:pg17` is used by CI).
