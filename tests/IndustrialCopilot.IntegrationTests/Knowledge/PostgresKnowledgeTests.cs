@@ -146,13 +146,20 @@ public class PostgresKnowledgeTests(KnowledgeDatabase database) : IClassFixture<
     [PostgresFact]
     public async Task ConcurrentReplacementsPublishOneWholeBatchNotAUnion()
     {
-        var doc = Guid.NewGuid(); var rev = Guid.NewGuid(); var store = Store();
-        var one = Request(doc, rev, Chunk(doc, rev, 1, "pump alpha"), Chunk(doc, rev, 2, "pump alpha"));
-        var two = Request(doc, rev, Chunk(doc, rev, 3, "pump beta"), Chunk(doc, rev, 4, "pump beta"));
-        await Task.WhenAll(store.ReplaceRevisionAsync(one, default), store.ReplaceRevisionAsync(two, default));
-        var results = await store.RetrieveAsync(new("pump", 10, doc, rev), RetrievalMode.Keyword, default);
-        Assert.Equal(2, results.Count);
-        Assert.Single(results.Select(r => r.Snippet).Distinct());
+        // Exercise first-insert arbitration repeatedly, including a new profile with its
+        // own secondary unique key, not just replacement of a pre-existing row.
+        for (var iteration=0;iteration<6;iteration++)
+        {
+            var doc = Guid.NewGuid(); var rev = Guid.NewGuid(); PostgresKnowledgeStore store;
+            var profile = "concurrent-"+Guid.NewGuid().ToString("N");
+            store=Store(profile:profile);
+            var one = new RevisionIndexRequest(doc,rev,profile,[Chunk(doc,rev,1,"pump alpha"),Chunk(doc,rev,2,"pump alpha")]);
+            var two = new RevisionIndexRequest(doc,rev,profile,[Chunk(doc,rev,3,"pump beta"),Chunk(doc,rev,4,"pump beta")]);
+            await Task.WhenAll(store.ReplaceRevisionAsync(one, default), store.ReplaceRevisionAsync(two, default));
+            var results = await store.RetrieveAsync(new("pump", 10, doc, rev), RetrievalMode.Keyword, default);
+            Assert.Equal(2, results.Count);
+            Assert.Single(results.Select(r => r.Snippet).Distinct());
+        }
     }
 
     [PostgresFact]
