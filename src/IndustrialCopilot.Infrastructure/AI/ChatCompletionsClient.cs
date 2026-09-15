@@ -35,6 +35,20 @@ internal sealed class ChatCompletionsClient : IDisposable
         }, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
     }
 
+    private void ValidatePayload(JsonObject payload)
+    {
+        if (payload.ToJsonString().Length > 1048576) throw new ArgumentException("Provider input budget exceeded.");
+        if (payload["messages"] is JsonArray messages)
+        {
+            if (messages.Count > 128) throw new ArgumentException("Provider message budget exceeded.");
+            var property = ollama ? "max_tokens" : "max_completion_tokens";
+            var maximum = payload[property]?.GetValue<int>() ?? 4096;
+            if (maximum > 16384) throw new ArgumentException("Provider output budget exceeded.");
+            payload[property] = maximum;
+        }
+        if (!ollama) HostedDataBoundary.Apply(payload, apiKey);
+    }
+
     public async Task<CompletionResponse> CompleteAsync(CompletionRequest request, CancellationToken cancellationToken)
     {
         var payload = OpenAiProtocol.ChatRequest(chatModel, request, false, ollama);
@@ -56,6 +70,7 @@ internal sealed class ChatCompletionsClient : IDisposable
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var payload = OpenAiProtocol.ChatRequest(chatModel, request, true, ollama);
+        ValidatePayload(payload);
         using var deadline = Deadline(streamingTimeout, cancellationToken);
         await using var iterator = ReadStreamAsync(payload, deadline.Token).GetAsyncEnumerator(deadline.Token);
         // Keep normalization outside the iterator containing yield statements. The deadline
@@ -69,6 +84,7 @@ internal sealed class ChatCompletionsClient : IDisposable
 
     internal async Task<T> PostAsync<T>(string path, JsonObject payload, Func<JsonElement, T> map, CancellationToken caller)
     {
+        ValidatePayload(payload);
         using var deadline = Deadline(requestTimeout, caller);
         return await GuardAsync(async () =>
         {
@@ -76,7 +92,16 @@ internal sealed class ChatCompletionsClient : IDisposable
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
             await ProviderFailures.CheckStatusAsync(response, deadline.Token).ConfigureAwait(false);
             await using var body = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
-            using var document = await JsonDocument.ParseAsync(body, cancellationToken: deadline.Token).ConfigureAwait(false);
+            using var bounded = new MemoryStream();
+            var buffer = new byte[8192];
+            int read;
+            while ((read = await body.ReadAsync(buffer, deadline.Token).ConfigureAwait(false)) != 0)
+            {
+                if (bounded.Length + read > 4 * 1024 * 1024) throw OpenAiProtocol.Invalid();
+                bounded.Write(buffer, 0, read);
+            }
+            bounded.Position = 0;
+            using var document = await JsonDocument.ParseAsync(bounded, cancellationToken: deadline.Token).ConfigureAwait(false);
             var result = Parse(() => map(document.RootElement));
             deadline.Token.ThrowIfCancellationRequested();
             return result;

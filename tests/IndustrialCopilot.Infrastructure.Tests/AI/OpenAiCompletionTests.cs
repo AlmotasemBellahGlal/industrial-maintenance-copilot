@@ -27,13 +27,13 @@ public class OpenAiCompletionTests
     }
 
     [Fact]
-    public async Task OmitsUnspecifiedOptionsAndDoesNotClampFiniteTemperature()
+    public async Task DefaultsOutputBudgetAndDoesNotClampFiniteTemperature()
     {
         var handler = Fixtures.Handler(Fixtures.Completion);
         using var provider = new OpenAiLlmProvider(Fixtures.Options(), handler);
         await provider.CompleteAsync(Fixtures.Query, default);
         Assert.False(handler.Body!.ContainsKey("temperature"));
-        Assert.False(handler.Body.ContainsKey("max_completion_tokens"));
+        Assert.Equal(4096,handler.Body["max_completion_tokens"]!.GetValue<int>());
         await provider.CompleteAsync(new CompletionRequest(Fixtures.Query.Messages, 3), default);
         Assert.Equal(3, handler.Body!["temperature"]!.GetValue<double>());
     }

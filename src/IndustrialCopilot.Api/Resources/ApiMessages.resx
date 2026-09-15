@@ -15,4 +15,8 @@
 <data name="TimeoutDetail" xml:space="preserve"><value>Inspect the current record before retrying.</value></data>
 <data name="Unavailable" xml:space="preserve"><value>Service unavailable</value></data>
 <data name="UnavailableDetail" xml:space="preserve"><value>The outcome may be unknown. Inspect the record before retrying a consequential operation.</value></data>
+<data name="RateLimited" xml:space="preserve"><value>Too many requests</value></data>
+<data name="RateLimitedDetail" xml:space="preserve"><value>Wait for Retry-After before retrying.</value></data>
+<data name="PayloadTooLarge" xml:space="preserve"><value>Request too large</value></data>
+<data name="PayloadTooLargeDetail" xml:space="preserve"><value>Reduce the request size before retrying.</value></data>
 </root>

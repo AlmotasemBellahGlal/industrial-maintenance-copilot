@@ -51,4 +51,15 @@ public class KnowledgeRegistrationTests
         Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddKnowledgePipeline(Configuration()));
         Assert.Throws<InvalidOperationException>(() => Services().AddKnowledgePipeline(new ConfigurationBuilder().Build()));
     }
+
+    [Fact]
+    public void HostedRedactionCannotSilentlyReusePreRedactionIndexBinding()
+    {
+        var services=new ServiceCollection();
+        services.AddLlmProviders(new LlmProviderOptions(LlmProviderKind.OpenAi,null,false,LlmProviderKind.OpenAi,
+            new OpenAiOptions(new Uri("https://api.openai.com/"),"chat","embed","synthetic-test-key",TimeSpan.FromSeconds(1),TimeSpan.FromSeconds(1)),null));
+        using var host=services.AddKnowledgePipeline(Configuration()).BuildServiceProvider();
+        var previous=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("OpenAi\nhttps://api.openai.com/\nembed\nweights-v1")));
+        Assert.NotEqual(previous,host.GetRequiredService<KnowledgeStoreOptions>().Binding);
+    }
 }

@@ -26,6 +26,7 @@ public static class KnowledgeRegistration
         var profile = Required(section, "EmbeddingProfile");
         // Deployment-owned immutable weights/preprocessing revision, not the display profile.
         var revision = Required(section, "EmbeddingRevision");
+        if (llm.EmbeddingProvider == LlmProviderKind.OpenAi) revision += "\nhosted-redaction-v1";
         var binding = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{llm.EmbeddingProvider}\n{endpoint}\n{model}\n{revision}")));
         try
         {
