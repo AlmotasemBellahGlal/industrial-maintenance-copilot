@@ -11,7 +11,7 @@ public sealed class ApiMessages
         var key = status switch
         {
             400 => "InvalidRequest", 401 => "Unauthenticated", 403 => "Forbidden",
-            404 => "NotFound", 409 => "Conflict", 422 => "NotAccepted",
+            413 => "PayloadTooLarge", 429 => "RateLimited", 404 => "NotFound", 409 => "Conflict", 422 => "NotAccepted",
             504 => "Timeout", _ => "Unavailable"
         };
         return new { error = code, title = messages[key].Value, detail = messages[key + "Detail"].Value,

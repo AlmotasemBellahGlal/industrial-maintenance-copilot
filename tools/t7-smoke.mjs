@@ -1,3 +1,4 @@
+import { smokeFetch } from './smoke-http.mjs';
 // Real PostgreSQL/API plus child-process production Worker services in the opt-in deterministic demo host.
 // Start the demo API first. Do not run another Worker during this isolated recovery test.
 import { readFileSync, openSync, closeSync, writeFileSync } from 'node:fs';
@@ -10,7 +11,7 @@ const equipmentId='11111111-1111-1111-1111-111111111111';
 const proof=[];let worker;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function call(path,body,culture='en-US',key) {
-  const response=await fetch(base+path,{method:body===undefined?'GET':'POST',signal:AbortSignal.timeout(10000),headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json','Accept-Language':culture,...(key?{'Idempotency-Key':key}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+  const response=await smokeFetch(base+path,{method:body===undefined?'GET':'POST',signal:AbortSignal.timeout(10000),headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json','Accept-Language':culture,...(key?{'Idempotency-Key':key}:{})},body:body===undefined?undefined:JSON.stringify(body)});
   return {status:response.status,body:await response.json()};
 }
 async function submit(culture='en-US',symptom='pump vibration') {

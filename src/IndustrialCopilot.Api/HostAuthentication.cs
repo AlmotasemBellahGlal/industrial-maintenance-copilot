@@ -8,7 +8,8 @@ using Microsoft.Extensions.Options;
 
 namespace IndustrialCopilot.Api;
 
-public sealed record HostCredential(string Actor,string Secret,IReadOnlySet<string> Permissions,IReadOnlySet<Guid> Equipment);
+public sealed record HostCredential(string Actor,string Secret,IReadOnlySet<string> Permissions,IReadOnlySet<Guid> Equipment)
+{ public override string ToString() => "HostCredential [redacted]"; }
 public sealed class HostAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options,ILoggerFactory logger,UrlEncoder encoder,IReadOnlyList<HostCredential> credentials)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options,logger,encoder)
 {
