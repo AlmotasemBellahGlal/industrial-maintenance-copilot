@@ -19,6 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '26'
+      - run: node --test tools/smoke-http.test.mjs
       - run: python3 scripts/security/scan.py secrets
       - run: dotnet restore
       - run: python3 scripts/security/scan.py dependencies

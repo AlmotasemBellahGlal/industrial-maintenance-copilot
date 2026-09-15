@@ -1,3 +1,4 @@
+import { smokeFetch } from './smoke-http.mjs';
 // Run from the repository root after starting IndustrialCopilot.Demo.
 // All workflow state is created by the real HTTP API; no database seeding of approvals.
 import { readFileSync } from 'node:fs';
@@ -5,7 +6,7 @@ import assert from 'node:assert/strict';
 const credential=readFileSync('artifacts/issue25/credential.txt','utf8').trim();
 const base='http://127.0.0.1:5000/api';
 async function call(path,body,culture='en-US',authenticated=true) {
-  const response=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{
+  const response=await smokeFetch(base+path,{method:body===undefined?'GET':'POST',headers:{
     'Content-Type':'application/json','Accept-Language':culture,...(authenticated?{Authorization:`Bearer ${credential}`}:{})
   },body:body===undefined?undefined:JSON.stringify(body)});
   return {status:response.status,body:await response.json()};
@@ -18,7 +19,7 @@ for(const culture of ['en-US','ar-EG']) {
   for(const decision of ['Approve','Reject','EditAndApprove']) {
     let run;
     if(process.argv.includes('--jobs')) {
-      const response=await fetch(base+'/jobs',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential}`,'Accept-Language':culture,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({equipmentId:'11111111-1111-1111-1111-111111111111',symptom:'pump vibration'})});
+      const response=await smokeFetch(base+'/jobs',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential}`,'Accept-Language':culture,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({equipmentId:'11111111-1111-1111-1111-111111111111',symptom:'pump vibration'})});
       assert.equal(response.status,202);let job=await response.json();
       for(let poll=0;poll<60 && !['Succeeded','Failed','Cancelled'].includes(job.status);poll++) {
         await new Promise(resolve=>setTimeout(resolve,500));job=(await call(`/jobs/${job.jobId}`)).body;

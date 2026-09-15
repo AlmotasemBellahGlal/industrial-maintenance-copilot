@@ -163,3 +163,5 @@ No perfect prompt-injection resistance, full PII detector, production identity p
 | Misinformation (LLM09) | advisory narrative | PARTIAL citations + measured evaluation + human gate | EvidenceCatalog, exact policy, FR-3 | frozen poor baseline + safety tests | no general truth guarantee |
 
 References: [OWASP Web 2025](https://top10.owasp.org/2025/), [API 2023](https://api-security.owasp.org/editions/2023/en/0x00-header/), [LLM 2025](https://owasp.org/www-project-top-10-for-large-language-model-applications/assets/PDF/OWASP-Top-10-for-LLMs-v2025.pdf), [Microsoft advisory](https://github.com/microsoft/OpenAPI.NET/security/advisories/GHSA-v5pm-xwqc-g5wc), [Gitleaks release](https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1).
+
+Smoke clients honor explicit 429 Retry-After (at most two retries, 65 seconds per wait). They reuse the exact idempotency key/body and refresh the per-attempt timeout. They never retry uncertain 5xx or conflicts. This keeps production limits enabled during bursty T7/demo regression runs; dedicated HTTP tests still assert immediate 429. `node --test tools/smoke-http.test.mjs` verifies the harness behavior.
