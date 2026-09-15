@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\IndustrialCopilot.Api\IndustrialCopilot.Api.csproj" />
+    <ProjectReference Include="../../src/IndustrialCopilot.Worker/IndustrialCopilot.Worker.csproj" />
   </ItemGroup>
 
 </Project>

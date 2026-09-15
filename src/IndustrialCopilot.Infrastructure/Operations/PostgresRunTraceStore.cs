@@ -5,7 +5,7 @@ using static IndustrialCopilot.Infrastructure.Operations.OperationalSql;
 
 namespace IndustrialCopilot.Infrastructure.Operations;
 
-public sealed class PostgresRunTraceStore(NpgsqlDataSource source,OperationalAccessPolicy policy) : IRunTraceStore
+public sealed class PostgresRunTraceStore(NpgsqlDataSource source,OperationalAccessPolicy policy,ReasoningJobExecutionScope? jobScope=null) : IRunTraceStore
 {
     public async Task<RunTraceSnapshot?> GetAsync(Guid executionId,CancellationToken ct)
     {
@@ -24,6 +24,7 @@ public sealed class PostgresRunTraceStore(NpgsqlDataSource source,OperationalAcc
         var json=TraceSnapshots.Serialize(snapshot);
         return await Run(source,async(c,t)=>
         {
+            if(jobScope is not null) await jobScope.FenceAsync(c,t,ct);
             // INSERT serializes concurrent first writers; the primary key is the arbitration point.
             var inserted=await Execute(c,t,"""
                 INSERT INTO operations.traces(execution_id,correlation_id,run_id,version,payload)

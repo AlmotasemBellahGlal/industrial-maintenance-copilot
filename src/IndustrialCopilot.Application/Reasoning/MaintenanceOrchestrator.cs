@@ -1,3 +1,4 @@
+using IndustrialCopilot.Application.Abstractions.Jobs;
 using IndustrialCopilot.Application.Abstractions.Agents;
 using IndustrialCopilot.Application.Abstractions.Agents.DiagnosticPlanning;
 using IndustrialCopilot.Application.Abstractions.Agents.WorkOrders;
@@ -31,23 +32,33 @@ public sealed class MaintenanceOrchestrator
         this.limits=limits??new(); this.clock=clock??TimeProvider.System;
     }
 
-    public async Task<MaintenanceReasoningResult> ExecuteAsync(MaintenanceReasoningRequest request,CancellationToken cancellationToken,IProgress<MaintenanceProgress>? progress=null)
+    public async Task<MaintenanceReasoningResult> ExecuteAsync(MaintenanceReasoningRequest request,CancellationToken cancellationToken,IProgress<MaintenanceProgress>? progress=null,
+        bool durableAttempt=false,Func<MaintenanceProgress,CancellationToken,Task>? durableProgress=null)
     {
         ArgumentNullException.ThrowIfNull(request); cancellationToken.ThrowIfCancellationRequested();
         var input=request.Input;
         var run=new MaintenanceRun(request.RunId,input.Candidates[0].EquipmentId,input.ReportedSymptom);
-        // No automatic restart/replay: an existing run or execution requires explicit host reconciliation.
+        // Durable attempts replay only before publication, under the host persistence lease fence.
         if(await traces.GetAsync(request.ExecutionId,cancellationToken) is not null)
             return new(MaintenanceReasoningOutcome.Conflict,run.Id,null);
-        var runToken=await workflows.TrySaveRunAsync(run,null,cancellationToken);
+        string? runToken;
+        if(durableAttempt)
+        {
+            var stored=await workflows.GetRunAsync(run.Id,cancellationToken);
+            if(stored is null || stored.Run.EquipmentId!=run.EquipmentId || stored.Run.ReportedSymptom!=run.ReportedSymptom
+                || stored.Run.Status is not (MaintenanceRunStatus.Queued or MaintenanceRunStatus.Running))
+                return new(MaintenanceReasoningOutcome.Conflict,run.Id,null);
+            run=stored.Run; runToken=stored.ConcurrencyToken;
+        }
+        else runToken=await workflows.TrySaveRunAsync(run,null,cancellationToken);
         if(runToken is null) return new(MaintenanceReasoningOutcome.Conflict,run.Id,null);
         var trace=new WorkflowTrace(traces,request.ExecutionId,request.CorrelationId,run.Id,clock);
         var root=trace.Start(TraceOperationKind.Orchestration,"maintenance_pipeline");
         var published=false;
-        Emit(MaintenanceProgressKind.WorkflowStarted);
+        await Emit(MaintenanceProgressKind.WorkflowStarted);
         try
         {
-            run.Start();
+            if(run.Status==MaintenanceRunStatus.Queued) run.Start();
             runToken=await workflows.TrySaveRunAsync(run,runToken,cancellationToken) ?? throw new WorkflowConflictException();
             await trace.Flush(cancellationToken);
             var match=await Stage(AgentRole.SymptomMatcher,(runtime,ct)=>new SymptomMatcherAgent(runtime,retrieval,limits).MatchAsync(input,ct),r=>r.Outcome);
@@ -70,8 +81,8 @@ public sealed class MaintenanceOrchestrator
             run.WaitForApproval();
             if(!await workflows.TryPublishReviewAsync(order,run,runToken,proposal,cancellationToken)) throw new WorkflowConflictException();
             published=true;
-            Emit(MaintenanceProgressKind.WorkOrderReady,workOrder:order.Id);
-            Emit(MaintenanceProgressKind.WaitingForApproval,workOrder:order.Id);
+            await Emit(MaintenanceProgressKind.WorkOrderReady,workOrder:order.Id);
+            await Emit(MaintenanceProgressKind.WaitingForApproval,workOrder:order.Id);
             var review=trace.Start(TraceOperationKind.Approval,"human_review_boundary",root);
             trace.End(review,workOrder:order.Id,revision:order.Revision);
             trace.End(root);
@@ -82,15 +93,17 @@ public sealed class MaintenanceOrchestrator
         }
         catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
         {
+            if(durableAttempt) throw; // Shutdown/lease loss must remain recoverable, not claim business cancellation.
             try { await Finish(true,"caller_cancelled"); }
             finally { cancellationToken.ThrowIfCancellationRequested(); }
             throw;
         }
         catch(DurableCancellationException)
         {
-            await Finish(true,"durable_cancellation");
+            if(!durableAttempt) await Finish(true,"durable_cancellation");
             return new(MaintenanceReasoningOutcome.Cancelled,run.Id,null);
         }
+        catch(JobLeaseLostException) { throw; }
         catch(AgentTimedOutException)
         {
             var cancelled=await Finish(false,"agent_timeout");
@@ -122,7 +135,7 @@ public sealed class MaintenanceOrchestrator
         async Task<T> Stage<T>(AgentRole role,Func<AgentRuntime,CancellationToken,Task<T>> operation,Func<T,AgentOutcome> getOutcome)
         {
             await CheckRun(cancellationToken);
-            Emit(MaintenanceProgressKind.AgentStarted,role);
+            await Emit(MaintenanceProgressKind.AgentStarted,role);
             var id=trace.Start(TraceOperationKind.Agent,role.ToString(),root,role);
             using var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(limits.AgentTimeout);
@@ -131,7 +144,7 @@ public sealed class MaintenanceOrchestrator
                 var result=await operation(new(llm,limits,trace,id,request.ResponseCulture),timeout.Token).WaitAsync(timeout.Token);
                 timeout.Token.ThrowIfCancellationRequested();
                 var outcome=getOutcome(result);
-                Emit(MaintenanceProgressKind.AgentCompleted,role);
+                await Emit(MaintenanceProgressKind.AgentCompleted,role);
                 trace.End(id,outcome==AgentOutcome.Success?TraceStepStatus.Completed:TraceStepStatus.Failed,
                     outcome==AgentOutcome.Success?null:outcome==AgentOutcome.InsufficientEvidence?"insufficient_evidence":"cannot_proceed");
                 await trace.Flush(cancellationToken);
@@ -152,7 +165,7 @@ public sealed class MaintenanceOrchestrator
             {
                 var result=await safety.AssessAsync(plan,proposal,timeout.Token).WaitAsync(timeout.Token);
                 timeout.Token.ThrowIfCancellationRequested();
-                Emit(MaintenanceProgressKind.SafetyEvaluated,allowed:result.CanProceed);
+                await Emit(MaintenanceProgressKind.SafetyEvaluated,allowed:result.CanProceed);
                 trace.End(id,result.CanProceed?TraceStepStatus.Completed:TraceStepStatus.Failed,result.CanProceed?null:"safety_blocked");
                 await trace.Flush(cancellationToken);
                 return result;
@@ -169,7 +182,7 @@ public sealed class MaintenanceOrchestrator
             runToken=await workflows.TrySaveRunAsync(run,runToken,cancellationToken) ?? throw new WorkflowConflictException();
             trace.End(root,TraceStepStatus.Failed,outcome==AgentOutcome.InsufficientEvidence?"insufficient_evidence":"cannot_proceed");
             await trace.Flush(cancellationToken);
-            Emit(MaintenanceProgressKind.Blocked);
+            await Emit(MaintenanceProgressKind.Blocked);
             return new(outcome==AgentOutcome.InsufficientEvidence?MaintenanceReasoningOutcome.InsufficientEvidence:MaintenanceReasoningOutcome.CannotProceed,run.Id,null);
         }
         async Task<bool> Finish(bool cancelled,string code)
@@ -190,11 +203,15 @@ public sealed class MaintenanceOrchestrator
             }
             trace.End(root,cancelled?TraceStepStatus.Cancelled:TraceStepStatus.Failed,code);
             await trace.Flush(cleanup.Token);
-            Emit(cancelled?MaintenanceProgressKind.Cancelled:MaintenanceProgressKind.Failed);
+            await Emit(cancelled?MaintenanceProgressKind.Cancelled:MaintenanceProgressKind.Failed);
             return cancelled;
         }
-        void Emit(MaintenanceProgressKind kind,AgentRole? role=null,bool? allowed=null,Guid? workOrder=null)
-        { try { progress?.Report(new(kind,run.Id,role,allowed,workOrder)); } catch { /* Observation is not workflow authority. */ } }
+        async Task Emit(MaintenanceProgressKind kind,AgentRole? role=null,bool? allowed=null,Guid? workOrder=null)
+        {
+            var value=new MaintenanceProgress(kind,run.Id,role,allowed,workOrder);
+            if(durableProgress is not null) await durableProgress(value,cancellationToken);
+            try { progress?.Report(value); } catch { /* Legacy observation is not workflow authority. */ }
+        }
     }
     private sealed class DurableCancellationException : OperationCanceledException;
 }

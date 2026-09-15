@@ -12,7 +12,7 @@ namespace IndustrialCopilot.Infrastructure.Operations;
 
 
 /// <summary>Trusted persistence boundary. Callers authorize mutations before saving; no dispatch integration.</summary>
-public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowStore
+public sealed class PostgresWorkflowStore(NpgsqlDataSource source,ReasoningJobExecutionScope? jobScope=null) : IWorkflowStore
 {
     internal NpgsqlDataSource Source => source;
 
@@ -37,6 +37,7 @@ public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowSt
         {
             return await Run(source, async(c,t) =>
             {
+                if(jobScope is not null) await jobScope.FenceAsync(c,t,ct);
                 var changed = await Execute(c,t,"UPDATE operations.runs SET status=3,token=@token WHERE id=@id AND token::text=@expected AND status=2 AND NOT cancellation_requested AND equipment_id=@equipment AND symptom=@symptom AND NOT EXISTS(SELECT 1 FROM operations.dispatch_attempts WHERE run_id=@id AND state IN (1,4))",ct,
                     ("id",runId),("token",Guid.NewGuid()),("expected",expectedRunToken),("equipment",copy.Content.EquipmentId),("symptom",copy.Content.ReportedSymptom));
                 if (changed != 1) throw new PublishConflict();
@@ -72,6 +73,7 @@ public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowSt
         var copy = WorkOrder.Restore(order.Id,order.Content,order.Revision,order.Status,order.SafetyAssessmentRevision,order.SafetyPrerequisites,order.ApprovalHistory);
         return Run(source,async (c,t) =>
         {
+            if(jobScope is not null) await jobScope.FenceAsync(c,t,ct);
             var current = await Load(c,t,copy.Id,true,ct);
             if (current?.ConcurrencyToken != expectedToken) return null;
             // External acceptance can only be committed by the reserved confirmation boundary.
@@ -187,6 +189,7 @@ public sealed class PostgresWorkflowStore(NpgsqlDataSource source) : IWorkflowSt
         var copy=MaintenanceRun.Restore(run.Id,run.EquipmentId,run.ReportedSymptom,run.Status,run.IsCancellationRequested);
         return Run(source,async(c,t) =>
         {
+            if(jobScope is not null) await jobScope.FenceAsync(c,t,ct);
             await Execute(c,t,"INSERT INTO operations.equipment(id) VALUES(@id) ON CONFLICT DO NOTHING",ct,("id",copy.EquipmentId));
             var token=Guid.NewGuid();
             var sql=expectedToken is null

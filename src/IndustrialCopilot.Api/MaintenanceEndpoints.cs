@@ -88,7 +88,7 @@ public static class MaintenanceEndpoints
     private static IResult Approval(ApprovalOperationResult result)=>Results.Json(new {outcome=result.Outcome.ToString(),review=result.Snapshot is {} s?ReviewResponse.From(s):null},statusCode:result.Outcome switch{ApprovalOperationOutcome.Applied=>200,ApprovalOperationOutcome.Forbidden=>403,ApprovalOperationOutcome.NotFound=>404,ApprovalOperationOutcome.Conflict or ApprovalOperationOutcome.InvalidState=>409,_=>422});
     private static int GateStatus(DispatchGateOutcome outcome)=>outcome switch{DispatchGateOutcome.Ready=>200,DispatchGateOutcome.Forbidden=>403,DispatchGateOutcome.NotFound=>404,DispatchGateOutcome.Conflict=>409,_=>422};
     private static IResult Dispatch(DispatchReservation result,bool inspection=false)=>Results.Json(new DispatchResponse(result.Attempt?.Id,result.Attempt?.WorkOrderId,result.Attempt?.Revision,result.Outcome.ToString(),result.Attempt?.State.ToString(),result.Attempt?.ExternalReference,result.Failure?.ToString()),statusCode:inspection?200:result.Attempt?.State switch{DispatchAttemptState.Pending or DispatchAttemptState.Uncertain=>202,DispatchAttemptState.DefinitivelyFailed=>422,_=>GateStatus(result.Outcome)});
-    private static async Task<MaintenanceReasoningRequest> Prepare(StartRunRequest request,HttpContext c)
+    internal static async Task<MaintenanceReasoningRequest> Prepare(StartRunRequest request,HttpContext c)
     {
         HttpValidation.Id(request.EquipmentId);HttpValidation.Text(request.Symptom,2000);Permit(c,"start",request.EquipmentId);Permit(c,"read",request.EquipmentId);
         var equipment=await Service<IEquipmentContextStore>(c).GetAsync(request.EquipmentId,c.RequestAborted)??throw new ApiProblemException(404,"equipment_not_found");
