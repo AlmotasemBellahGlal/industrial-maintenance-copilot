@@ -6,7 +6,15 @@ The diagrams are maintained as source in the repository so that architectural ch
 
 ---
 
-## Current implemented runtime (Issues #21 / #23)
+## Current implemented runtime (Issues #21 / #23 / #25)
+
+English/Arabic presentation uses standard API request localization and an explicit
+Application narrative culture. Domain scope, safety policy, authorization and source
+citations are culture-independent. The separately guarded demo executable replaces
+only the LLM boundary and exercises the real API, PostgreSQL and Worker adapters.
+See [ADR-007](adr/ADR-007-presentation-language-boundary.md) and the
+[reproducible demo guide](DEMO-GUIDE.md). The orchestration pattern remains a
+Sequential Pipeline with bounded tool loops and final-scope safety revalidation.
 
 The executable system has three specialized agents, a sequential Application
 orchestrator, OpenAI/Ollama adapters, and keyword/dense/hybrid retrieval using

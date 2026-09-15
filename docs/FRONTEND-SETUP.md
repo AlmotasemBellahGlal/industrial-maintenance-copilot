@@ -4,6 +4,12 @@ The browser is an **untrusted client** of the Issue #21 API. It displays proposa
 
 ## Tooling and design
 
+Issue #25 adds immediate English/Arabic switching, persisted language preference,
+RTL layout and centralized Accept-Language propagation for REST and SSE. Credentials
+remain memory-only. Source citations and executable scope are never translated.
+See [Arabic / English Demo](DEMO-GUIDE.md#arabic--english-demo) for the language boundary,
+real-backend browser test and synthetic demo startup.
+
 - Angular 22 standalone components, strict TypeScript/templates, lazy Router routes, typed Reactive Forms, HttpClient and local signals. No NgRx.
 - Node 26.x and npm 11.x; see [Angular compatibility](https://angular.dev/reference/versions).
 - UI UX Pro Max CLI 2.15.0, installed by the human with `uipro init --ai codex`. Its Python design-system workflow generated [MASTER.md](../design-system/industrial-maintenance-copilot/MASTER.md). Local `.agents/` installation is ignored; reviewed design output is tracked.

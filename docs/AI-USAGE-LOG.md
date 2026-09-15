@@ -76,3 +76,13 @@
 ### Verification
 - Verified the project builds successfully.
 - Verified the Clean Architecture project references compile.
+
+## 2026-09-15 — Issue #25 integration and bilingual demo readiness
+
+Codex assisted with completing the pre-existing localization work, creating the original synthetic pump manual and reviewed demonstration procedure, building the separate development-only deterministic demo host, and exercising real PostgreSQL/API/Worker/browser integration. The human approved the bilingual requirement and the existing safety/approval architecture; Codex did not perform or certify physical maintenance checks.
+
+Presentation decisions: standard Accept-Language cultures; resource-backed safe API errors with unchanged codes; persisted UI language only; RTL logical properties and technical identifier isolation; explicit Application narrative culture; original source snippets and exact executable safety scope remain untranslated. ADR-007 records the boundary. The deterministic provider is available only in a separately guarded demo executable, with randomly generated credentials in ignored local artifacts.
+
+Corrections during validation: repaired Arabic literals damaged by a Windows PowerShell encoding boundary; fixed a successful-agent trace incorrectly carrying cannot_proceed; fixed concurrent initial index inserts colliding on secondary unique constraints; named duplicate accessibility landmarks; allowed a new dispatch request after reload only when the server definitively rejected the gate without creating an attempt. Unknown delivery outcomes retain retry protection. Test fixtures use bounded scheduling to avoid overwhelming local Docker storage.
+
+Validation uses actual PostgreSQL/pgvector migrations and ingestion, six bilingual HTTP workflows, browser journeys, safety and approval failures, and durable receiver/Worker reconciliation. Detailed commands and limitations are in DEMO-GUIDE.md. No live OpenAI, Ollama, or external ERP was used. Existing Microsoft.OpenApi NU1903 was deliberately left outside this issue. Final test totals are recorded in the PR after the final validation pass.
