@@ -6,8 +6,9 @@ public sealed record DocumentProcessingRequest
     public Guid DocumentId { get; }
     public Guid ManualRevisionId { get; }
     public string MediaType { get; }
+    public DocumentMetadata? Metadata { get; }
 
-    public DocumentProcessingRequest(Guid documentId, Guid manualRevisionId, string mediaType)
+    public DocumentProcessingRequest(Guid documentId, Guid manualRevisionId, string mediaType, DocumentMetadata? metadata = null)
     {
         if (documentId == Guid.Empty) throw new ArgumentException("Document identity is required.", nameof(documentId));
         if (manualRevisionId == Guid.Empty) throw new ArgumentException("Revision identity is required.", nameof(manualRevisionId));
@@ -15,5 +16,6 @@ public sealed record DocumentProcessingRequest
         DocumentId = documentId;
         ManualRevisionId = manualRevisionId;
         MediaType = mediaType;
+        Metadata = metadata;
     }
 }

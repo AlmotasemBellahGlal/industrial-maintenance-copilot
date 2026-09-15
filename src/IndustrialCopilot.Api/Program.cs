@@ -6,17 +6,44 @@ using Microsoft.AspNetCore.Authentication;
 using Npgsql;
 
 var ingestIndex=Array.IndexOf(args,"--ingest");
-if(ingestIndex>=0 && args.Length<ingestIndex+4)throw new ArgumentException("--ingest requires document ID, revision ID and a text file path.");
-var app=ApiHost.Build(ingestIndex<0?args:args.Take(ingestIndex).Concat(args.Skip(ingestIndex+4)).ToArray());
+var statusIndex=Array.IndexOf(args,"--ingestion-status");
+var metadataIndex=Array.IndexOf(args,"--ingest-metadata");
+if(ingestIndex>=0 && args.Length<ingestIndex+4)throw new ArgumentException("--ingest requires document ID, revision ID and a local file path.");
+if(statusIndex>=0 && args.Length<statusIndex+3)throw new ArgumentException("--ingestion-status requires document and revision IDs.");
+if(metadataIndex>=0 && args.Length<metadataIndex+4)throw new ArgumentException("--ingest-metadata requires title, source label and revision number.");
+var metadata=metadataIndex<0?null:new IndustrialCopilot.Application.Abstractions.Documents.Models.DocumentMetadata(args[metadataIndex+1],args[metadataIndex+2],int.Parse(args[metadataIndex+3]));
+var hostArgs=args.ToList();
+foreach(var option in new[]{(Index:ingestIndex,Count:4),(Index:statusIndex,Count:3),(Index:metadataIndex,Count:4)}.Where(o=>o.Index>=0).OrderByDescending(o=>o.Index))hostArgs.RemoveRange(option.Index,option.Count);
+var app=ApiHost.Build(hostArgs.ToArray());
 if(args.Contains("--migrate")) {await MaintenanceHostRegistration.MigrateAsync(app.Services,true,default);await app.DisposeAsync();return;}
+if(statusIndex>=0)
+{
+    try
+    {
+        var reports=await app.Services.GetRequiredService<IndustrialCopilot.Application.Abstractions.Documents.IIngestionReports>()
+            .ReadAsync(Guid.Parse(args[statusIndex+1]),Guid.Parse(args[statusIndex+2]),default);
+        Console.WriteLine(JsonSerializer.Serialize(reports,new JsonSerializerOptions { WriteIndented=true, Converters={new JsonStringEnumConverter()} }));
+    }
+    catch(Exception) { Console.Error.WriteLine("Ingestion status unavailable. Verify identifiers and database availability."); Environment.ExitCode=1; }
+    await app.DisposeAsync();return;
+}
 if(ingestIndex>=0)
 {
     var document=Guid.Parse(args[ingestIndex+1]);var revision=Guid.Parse(args[ingestIndex+2]);
     if(!app.Services.GetRequiredService<IReadOnlyList<IndustrialCopilot.Application.Reasoning.ApprovedMaintenanceProcedure>>().Any(p=>p.Candidate.DocumentId==document && p.Candidate.ManualRevisionId==revision))throw new ArgumentException("Ingestion revision must be configured for this deployment.");
     using var shutdown=new CancellationTokenSource();Console.CancelKeyPress+=(_,e)=>{e.Cancel=true;shutdown.Cancel();};
-    await using var source=File.OpenRead(args[ingestIndex+3]);
-    var count=await app.Services.GetRequiredService<IndustrialCopilot.Application.Knowledge.ManualIngestionService>().IngestAsync(new(document,revision,"text/plain"),source,shutdown.Token);
-    Console.WriteLine("Indexed chunks: "+count);await app.DisposeAsync();return;
+    try
+    {
+        var path=args[ingestIndex+3];
+        var media=Path.GetExtension(path).ToLowerInvariant() switch { ".txt"=>"text/plain", ".pdf"=>"application/pdf", _=>"application/unsupported" };
+        await using var source=File.OpenRead(path);
+        var count=await app.Services.GetRequiredService<IndustrialCopilot.Application.Knowledge.ManualIngestionService>().IngestAsync(
+            new(document,revision,media,metadata),source,shutdown.Token);
+        Console.WriteLine("Indexed chunks: "+count);
+        if(count==0)Environment.ExitCode=1;
+    }
+    catch(Exception) { Console.Error.WriteLine("Ingestion failed. Inspect --ingestion-status for a safe stage/category; if no attempt exists, verify local input/configuration."); Environment.ExitCode=1; }
+    await app.DisposeAsync();return;
 }
 await app.RunAsync();
 

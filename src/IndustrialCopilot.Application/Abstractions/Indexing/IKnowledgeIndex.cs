@@ -14,5 +14,6 @@ public interface IKnowledgeIndex
     /// Empty replacement is not a delete operation and is rejected by the request contract.
     /// EmbeddingProfile identifies a configured compatible embedding space, independently of provider names.
     /// </remarks>
+    // A supplied IngestionAttemptId must be live and match this revision; complete it atomically with replacement.
     Task ReplaceRevisionAsync(RevisionIndexRequest request, CancellationToken cancellationToken);
 }

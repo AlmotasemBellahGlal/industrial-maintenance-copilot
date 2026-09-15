@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using System.Globalization;
 using IndustrialCopilot.Application.Abstractions.AI;
 using IndustrialCopilot.Application.Abstractions.AI.Models;
@@ -58,15 +59,29 @@ public sealed class PostgresKnowledgeStore(NpgsqlDataSource dataSource, Knowledg
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 await using var insert = new NpgsqlCommand("""
-                    INSERT INTO knowledge.chunks(document_id,revision_id,chunk_id,profile,dimensions,locator,content,embedding)
-                    VALUES (@document,@revision,@chunk,@profile,@dimensions,@locator,@content,CAST(@vector AS vector))
+                    INSERT INTO knowledge.chunks(document_id,revision_id,chunk_id,profile,dimensions,locator,content,embedding,metadata,page,section)
+                    VALUES (@document,@revision,@chunk,@profile,@dimensions,@locator,@content,CAST(@vector AS vector),@metadata,@page,@section)
                     """, connection, transaction);
                 AddRevision(insert, request); AddSpace(insert);
                 insert.Parameters.AddWithValue("chunk", item.Chunk.ChunkId);
                 insert.Parameters.AddWithValue("locator", item.Chunk.Locator);
                 insert.Parameters.AddWithValue("content", item.Chunk.Content);
                 insert.Parameters.AddWithValue("vector", VectorText(item.Vector));
+                insert.Parameters.AddWithValue("metadata", NpgsqlDbType.Jsonb, item.Chunk.Metadata is null ? DBNull.Value : JsonSerializer.Serialize(item.Chunk.Metadata));
+                insert.Parameters.AddWithValue("page", NpgsqlDbType.Integer, (object?)item.Chunk.Page ?? DBNull.Value);
+                insert.Parameters.AddWithValue("section", NpgsqlDbType.Text, (object?)item.Chunk.Section ?? DBNull.Value);
                 await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            if (request.IngestionAttemptId is {} attemptId)
+            {
+                await using var complete = new NpgsqlCommand("""
+                    UPDATE knowledge.ingestion_attempts i SET state=2,updated_at=clock_timestamp()
+                    WHERE id=@attempt AND document_id=@document AND revision_id=@revision AND state=1 AND stage=5
+                    AND EXISTS(SELECT 1 FROM pg_stat_activity a WHERE a.pid=i.backend_pid AND a.backend_start=i.backend_start)
+                    """, connection, transaction);
+                complete.Parameters.AddWithValue("attempt", attemptId); AddRevision(complete, request);
+                if (await complete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+                    throw new InvalidOperationException("Ingestion attempt is no longer active.");
             }
             // Cancellation/any failure before commit rolls the whole revision back on disposal.
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);

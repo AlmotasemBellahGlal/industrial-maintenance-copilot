@@ -28,7 +28,7 @@ public class KnowledgeRegistrationTests
     public void RegistersPortsAndUseCaseWithoutOpeningDatabaseOrCallingModel()
     {
         using var host = Services().AddKnowledgePipeline(Configuration()).BuildServiceProvider();
-        Assert.IsType<TextDocumentProcessor>(host.GetRequiredService<IDocumentProcessor>());
+        Assert.IsType<DocumentPipeline>(host.GetRequiredService<IDocumentProcessor>());
         Assert.Same(host.GetRequiredService<IKnowledgeIndex>(), host.GetRequiredService<IRetrievalService>());
         Assert.NotNull(host.GetRequiredService<ManualIngestionService>());
         Assert.Equal("embed", host.GetRequiredService<EmbeddingSpace>().Model);
