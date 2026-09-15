@@ -23,4 +23,8 @@
     <ProjectReference Include="../../src/IndustrialCopilot.Worker/IndustrialCopilot.Worker.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="../../tools/IndustrialCopilot.Corpus/AssessmentCorpus.cs" Link="Corpus/AssessmentCorpus.cs" />
+    <Compile Include="../../tools/IndustrialCopilot.Corpus/CorpusEmbeddings.cs" Link="Corpus/CorpusEmbeddings.cs" />
+  </ItemGroup>
 </Project>
