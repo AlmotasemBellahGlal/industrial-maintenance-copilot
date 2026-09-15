@@ -58,6 +58,21 @@ jobs:
         run: dotnet build
       - name: Test including isolated pgvector integration tests
         run: dotnet test --no-build --logger "trx;LogFilePrefix=tests"
+      - name: FR-3 golden validation and real reproducible baseline
+        env:
+          PGPASSWORD: isolated_ci_only
+          EVALUATION_POSTGRES: Host=localhost;Port=5432;Database=maintenance_evaluation;Username=postgres;Password=isolated_ci_only
+        run: |
+          dotnet run --no-build --project tools/IndustrialCopilot.Evaluation -- --validate
+          psql -h localhost -U postgres -d postgres -c 'CREATE DATABASE maintenance_evaluation'
+          dotnet run --no-build --project tools/IndustrialCopilot.Evaluation -- --repeat
+      - name: Retain measured evaluation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr3-evaluation
+          path: artifacts/evaluation/
+          if-no-files-found: warn
       - name: Validate and ingest synthetic assessment corpus with exact retrieval citations
         env:
           PGPASSWORD: isolated_ci_only
