@@ -71,7 +71,6 @@ public sealed class ManualIngestionService
                 try { await attempt.FailAsync(error switch
                 {
                     DocumentInputException input => input.Failure,
-                    NotSupportedException => IngestionFailure.UnsupportedFormat,
                     OperationCanceledException => IngestionFailure.Cancelled,
                     _ => IngestionFailure.StageFailed
                 }, cleanup.Token).ConfigureAwait(false); }

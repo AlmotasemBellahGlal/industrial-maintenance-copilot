@@ -72,16 +72,17 @@ public sealed class PdfDocumentExtractor(int maxBytes = 16_000_000, int maxPages
 }
 public sealed class ManualDocumentExtractor : IDocumentExtractor
 {
-    public Task<ExtractedDocument> ExtractAsync(DocumentProcessingRequest request, Stream source, CancellationToken cancellationToken)
+    public async Task<ExtractedDocument> ExtractAsync(DocumentProcessingRequest request, Stream source, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!MediaTypeHeaderValue.TryParse(request.MediaType, out var media)) throw new NotSupportedException("Unsupported document format.");
+        if (!MediaTypeHeaderValue.TryParse(request.MediaType, out var media)) throw new DocumentInputException(IngestionFailure.UnsupportedFormat);
         IDocumentExtractor extractor = media.MediaType?.ToLowerInvariant() switch
         {
             "text/plain" => new Utf8DocumentExtractor(),
             "application/pdf" => new PdfDocumentExtractor(),
-            _ => throw new NotSupportedException("Unsupported document format.")
+            _ => throw new DocumentInputException(IngestionFailure.UnsupportedFormat)
         };
-        return extractor.ExtractAsync(request, source, cancellationToken);
+        try { return await extractor.ExtractAsync(request, source, cancellationToken).ConfigureAwait(false); }
+        catch (NotSupportedException) { throw new DocumentInputException(IngestionFailure.UnsupportedFormat); }
     }
 }

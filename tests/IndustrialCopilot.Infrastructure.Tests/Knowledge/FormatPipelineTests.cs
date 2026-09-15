@@ -71,7 +71,8 @@ public class FormatPipelineTests
         Assert.Equal(IngestionFailure.InvalidDocument,error.Failure);
         using var oversized = new MemoryStream(new byte[10]);
         Assert.Equal(IngestionFailure.InputTooLarge,(await Assert.ThrowsAsync<DocumentInputException>(()=>new PdfDocumentExtractor(5).ExtractAsync(request,oversized,default))).Failure);
-        await Assert.ThrowsAsync<NotSupportedException>(()=>new ManualDocumentExtractor().ExtractAsync(new(request.DocumentId,request.ManualRevisionId,"application/executable"),Stream.Null,default));
+        foreach (var media in new[] { "application/executable", "text/plain; charset=latin1" })
+            Assert.Equal(IngestionFailure.UnsupportedFormat,(await Assert.ThrowsAsync<DocumentInputException>(()=>new ManualDocumentExtractor().ExtractAsync(new(request.DocumentId,request.ManualRevisionId,media),Stream.Null,default))).Failure);
     }
     [Fact]
     public void CorpusMinimumCountsAreCheckedAgainstActualPdfObjects()

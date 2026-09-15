@@ -25,6 +25,16 @@ public class StageReportingTests
         Assert.True(fake.Disposed);
     }
     [Fact]
+    public async Task UnsupportedProviderOperationIsNotMisreportedAsUnsupportedInputFormat()
+    {
+        var fake = new Ports(IngestionStage.Embedding, true);
+        var request = new DocumentProcessingRequest(Guid.NewGuid(), Guid.NewGuid(), "text/plain");
+        var service = new ManualIngestionService(new DocumentPipeline(fake, fake, fake), fake, fake, new("profile", "model", 2), reports: fake);
+        await Assert.ThrowsAsync<NotSupportedException>(() => service.IngestAsync(request, Stream.Null, default));
+        Assert.Equal(IngestionFailure.StageFailed, fake.Failure);
+        Assert.Equal(IngestionStage.Embedding, fake.Stages.Last());
+    }
+    [Fact]
     public async Task SuccessPassesTheSameAttemptToAtomicIndexCompletion()
     {
         var fake=new Ports(null);var request=new DocumentProcessingRequest(Guid.NewGuid(),Guid.NewGuid(),"text/plain");
@@ -32,11 +42,11 @@ public class StageReportingTests
         Assert.Equal(1,await service.IngestAsync(request,Stream.Null,default));
         Assert.Equal(fake.Id,fake.Indexed!.IngestionAttemptId); Assert.Null(fake.Failure); Assert.True(fake.Disposed);
     }
-    private sealed class Ports(IngestionStage? failure) : IDocumentExtractor,IDocumentCleaner,IDocumentChunker,ILlmProvider,IKnowledgeIndex,IIngestionReports,IIngestionAttempt
+    private sealed class Ports(IngestionStage? failure, bool unsupported = false) : IDocumentExtractor,IDocumentCleaner,IDocumentChunker,ILlmProvider,IKnowledgeIndex,IIngestionReports,IIngestionAttempt
     {
         public Guid Id {get;}=Guid.NewGuid(); public List<IngestionStage> Stages {get;}=[IngestionStage.Extracting];
         public IngestionFailure? Failure; public bool Disposed;public RevisionIndexRequest? Indexed;
-        private void Check(IngestionStage stage){if(stage==failure)throw new InvalidOperationException("secret provider response must never be persisted");}
+        private void Check(IngestionStage stage){if(stage==failure && unsupported)throw new NotSupportedException();if(stage==failure)throw new InvalidOperationException("secret provider response must never be persisted");}
         public Task<ExtractedDocument> ExtractAsync(DocumentProcessingRequest request,Stream source,CancellationToken token){Check(IngestionStage.Extracting);return Task.FromResult(new ExtractedDocument([new("text")],null));}
         public ExtractedDocument Clean(ExtractedDocument document,CancellationToken token){Check(IngestionStage.Cleaning);return document;}
         public IReadOnlyList<DocumentChunk> Chunk(DocumentProcessingRequest request,ExtractedDocument document,CancellationToken token){Check(IngestionStage.Chunking);return [new(request.DocumentId,request.ManualRevisionId,Guid.NewGuid(),"line 1","text")];}
