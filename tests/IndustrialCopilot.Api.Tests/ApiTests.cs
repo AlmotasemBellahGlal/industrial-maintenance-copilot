@@ -24,6 +24,53 @@ namespace IndustrialCopilot.Api.Tests;
 
 public class ApiTests
 {
+    [Theory]
+    [InlineData("en-US", "Authentication required")]
+    [InlineData("en", "Authentication required")]
+    [InlineData("ar-EG", "يلزم تسجيل الدخول")]
+    [InlineData("ar", "يلزم تسجيل الدخول")]
+    [InlineData("fr-FR", "Authentication required")]
+    public async Task RequestCultureLocalizesSafeErrorsWithoutChangingCodes(string culture,string title)
+    {
+        await using var h=new Harness(); await h.Start();
+        h.Client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(culture);
+        h.Client.DefaultRequestHeaders.Authorization=null;
+        var response=await h.StartRun();
+        Assert.Equal(HttpStatusCode.Unauthorized,response.StatusCode);
+        using var json=JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("unauthenticated",json.RootElement.GetProperty("error").GetString());
+        Assert.Equal(title,json.RootElement.GetProperty("title").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("detail").GetString()));
+    }
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("ar-EG")]
+    public async Task CultureDoesNotChangeExactScopeSafetyConflictOrAuthorization(string culture)
+    {
+        await using var h=new Harness();h.Scenario.Success();await h.Start();
+        h.Client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(culture);
+        var workflow=(await (await h.StartRun()).Content.ReadFromJsonAsync<WorkflowResponse>())!;
+        var review=(await h.Client.GetFromJsonAsync<ReviewResponse>("/api/work-orders/"+workflow.WorkOrderId))!;
+        Assert.Equal("PendingApproval",review.Status);
+        var requirement=Assert.Single(review.Requirements);
+        Assert.Equal(h.Scenario.Requirement.Id,requirement.Id);Assert.True(requirement.Mandatory);Assert.Equal("Unverified",requirement.Status);
+        var preview=await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/edited-safety-preview",review.Content);
+        Assert.Equal(HttpStatusCode.OK,preview.StatusCode);
+        var stale=await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/decisions",new DecisionRequest(new(review.Target.Revision,"stale"),"Approve"));
+        Assert.Equal(HttpStatusCode.Conflict,stale.StatusCode);
+        var gate=await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/dispatch",review.Target);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity,gate.StatusCode);
+        var spoof=await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/decisions",new {target=review.Target,decision="Approve",actorId="admin"});
+        Assert.Equal(HttpStatusCode.BadRequest,spoof.StatusCode);
+        await using var denied=new Harness();denied.Scenario.Success();await denied.Start("read,start");
+        denied.Client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(culture);
+        var other=(await (await denied.StartRun()).Content.ReadFromJsonAsync<WorkflowResponse>())!;
+        foreach(var operation in new[]{"dispatch","verifications","decisions"})
+        {
+            object body=operation=="dispatch" ? new TargetRequest(2,"token") : operation=="decisions" ? new DecisionRequest(new(2,"token"),"Approve") : new VerificationRequest(new(2,"token"),denied.Scenario.Requirement.Id,"observed",true);
+            Assert.Equal(HttpStatusCode.Forbidden,(await denied.Client.PostAsJsonAsync($"/api/work-orders/{other.WorkOrderId}/{operation}",body)).StatusCode);
+        }
+    }
     private sealed class Harness : IAsyncDisposable,IEquipmentContextStore,IWorkflowInspection,IWorkOrderApprovalService,IActionAuthorization,ISafetyVerificationService,IDispatchAttemptStore,IExternalDispatch
     {
         internal Scenario Scenario=new(); internal WebApplication App=null!; internal HttpClient Client=null!;

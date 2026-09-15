@@ -1,3 +1,4 @@
+import { TranslatePipe, LanguageService } from '../core/language';
 import { Component, inject, OnDestroy, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -9,117 +10,126 @@ import { Dispatch, RecordKind, Run, Trace } from '../core/contracts';
 import { Session } from '../core/session';
 import { guid, focusInvalid, Status } from '../shared/ui';
 @Component({
-  imports: [ReactiveFormsModule, RouterLink, DatePipe, Status],
-  template: ` <p class="eyebrow">Record inspection</p>
-    <h1>{{ title() }}</h1>
-    <p class="lede">Open a known identifier. The host checks your access on every request.</p>
+  imports: [TranslatePipe, ReactiveFormsModule, RouterLink, DatePipe, Status],
+  template: ` <p class="eyebrow">{{ 'Record inspection' | t }}</p>
+    <h1>{{ title() | t }}</h1>
+    <p class="lede">
+      {{ 'Open a known identifier. The host checks your access on every request.' | t }}
+    </p>
     <section class="panel">
       <form (submit)="$event.preventDefault(); open()" class="lookup">
         <div>
-          <label for="lookup">{{ title() }} ID</label
+          <label for="lookup">{{ title() | t }} {{ 'ID' | t }} </label
           ><input id="lookup" [formControl]="id" [attr.aria-invalid]="id.touched && id.invalid" />
           @if (id.touched && id.invalid) {
-            <p class="field-error" role="alert">Enter a nonempty UUID.</p>
+            <p class="field-error" role="alert">{{ 'Enter a nonempty UUID.' | t }}</p>
           }
         </div>
-        <button class="primary" [disabled]="busy()">Open record</button>
+        <button class="primary" [disabled]="busy()">{{ 'Open record' | t }}</button>
       </form>
       @if (error()) {
         <div class="notice danger" role="alert">
-          {{ error() }} <a routerLink="/connection">Connection settings</a>
+          {{ error() | t }} <a routerLink="/connection"> {{ 'Connection settings' | t }} </a>
         </div>
       }
       @if (busy()) {
-        <p role="status">Loading current server record…</p>
+        <p role="status">{{ 'Loading current server record…' | t }}</p>
       }
       @if (!run() && !dispatch() && !trace() && !busy()) {
         <p class="muted">
-          No record loaded. There is no global inventory endpoint; use a known ID or session
-          activity below.
+          {{
+            'No record loaded. There is no global inventory endpoint; use a known ID or session activity below.'
+              | t
+          }}
         </p>
       }
     </section>
     @if (run(); as r) {
       <section class="panel">
         <div class="section-heading">
-          <h2>Maintenance run</h2>
+          <h2>{{ 'Maintenance run' | t }}</h2>
           <app-status [text]="r.status" />
         </div>
         <dl>
-          <dt>Run</dt>
+          <dt>{{ 'Run' | t }}</dt>
           <dd>{{ r.runId }}</dd>
-          <dt>Equipment</dt>
+          <dt>{{ 'Equipment' | t }}</dt>
           <dd>{{ r.equipmentId }}</dd>
-          <dt>Reported symptom</dt>
+          <dt>{{ 'Reported symptom' | t }}</dt>
           <dd>{{ r.symptom }}</dd>
-          <dt>Cancellation intent</dt>
+          <dt>{{ 'Cancellation intent' | t }}</dt>
           <dd>
             {{
-              r.cancellationRequested
+              (r.cancellationRequested
                 ? 'Requested — inspect lifecycle status for acknowledgement'
                 : 'Not requested'
+              ) | t
             }}
           </dd>
         </dl>
-        <h3>Work orders</h3>
+        <h3>{{ 'Work orders' | t }}</h3>
         @for (id of r.workOrderIds; track id) {
           <p>
             <a [routerLink]="['/work-orders', id]">{{ id }}</a>
           </p>
         } @empty {
-          <p>No work order published.</p>
+          <p>{{ 'No work order published.' | t }}</p>
         }
-        <h3>Execution traces</h3>
+        <h3>{{ 'Execution traces' | t }}</h3>
         @for (id of r.executionIds; track id) {
           <p>
             <a [routerLink]="['/traces', id]">{{ id }}</a>
           </p>
         } @empty {
-          <p>No accessible trace linked.</p>
+          <p>{{ 'No accessible trace linked.' | t }}</p>
         }
-        <button (click)="load(r.runId)" [disabled]="busy()">Refresh run</button>
+        <button (click)="load(r.runId)" [disabled]="busy()">{{ 'Refresh run' | t }}</button>
       </section>
     }
     @if (dispatch(); as d) {
       <section class="panel">
         <div class="section-heading">
-          <h2>External dispatch</h2>
+          <h2>{{ 'External dispatch' | t }}</h2>
           <app-status [text]="d.state ?? d.outcome" />
         </div>
-        <p class="notice">{{ dispatchExplanation(d) }}</p>
+        <p class="notice">{{ dispatchExplanation(d) | t }}</p>
         <dl>
-          <dt>Attempt</dt>
+          <dt>{{ 'Attempt' | t }}</dt>
           <dd>{{ d.attemptId }}</dd>
-          <dt>Revision</dt>
+          <dt>{{ 'Revision' | t }}</dt>
           <dd>{{ d.revision }}</dd>
-          <dt>External reference</dt>
-          <dd>{{ d.externalReference ?? 'Not confirmed' }}</dd>
-          <dt>Gate outcome</dt>
+          <dt>{{ 'External reference' | t }}</dt>
+          <dd>{{ d.externalReference ?? 'Not confirmed' | t }}</dd>
+          <dt>{{ 'Gate outcome' | t }}</dt>
           <dd>{{ d.outcome }}</dd>
         </dl>
         <div class="actions">
-          <button (click)="load(d.attemptId!)" [disabled]="busy()">Refresh dispatch status</button>
+          <button (click)="load(d.attemptId!)" [disabled]="busy()">
+            {{ 'Refresh dispatch status' | t }}
+          </button>
           @if (d.workOrderId) {
-            <a [routerLink]="['/work-orders', d.workOrderId]">Inspect work order</a>
+            <a [routerLink]="['/work-orders', d.workOrderId]"> {{ 'Inspect work order' | t }} </a>
           }
         </div>
         <p class="muted">
-          Refresh only queries the existing attempt. It never sends another dispatch.
+          {{ 'Refresh only queries the existing attempt. It never sends another dispatch.' | t }}
         </p>
       </section>
     }
     @if (trace(); as t) {
       <section class="panel">
-        <h2>Execution activity</h2>
+        <h2>{{ 'Execution activity' | t }}</h2>
         <dl>
-          <dt>Execution</dt>
+          <dt>{{ 'Execution' | t }}</dt>
           <dd>{{ t.executionId }}</dd>
-          <dt>Correlation</dt>
+          <dt>{{ 'Correlation' | t }}</dt>
           <dd>{{ t.correlationId }}</dd>
         </dl>
         <p class="muted">
-          Safe stage metadata from the host. Token/cost details and hidden reasoning are not exposed
-          by this endpoint.
+          {{
+            'Safe stage metadata from the host. Token/cost details and hidden reasoning are not exposed by this endpoint.'
+              | t
+          }}
         </p>
         <ol class="timeline">
           @for (s of t.steps; track $index) {
@@ -128,19 +138,22 @@ import { guid, focusInvalid, Status } from '../shared/ui';
                 <strong>{{ s.name }}</strong
                 ><app-status [text]="s.status" />
               </div>
-              <span class="muted">{{ s.kind }} · {{ s.startedAt | date: 'medium' }}</span>
+              <span class="muted"
+                >{{ s.kind }} ·
+                {{ s.startedAt | date: 'medium' : undefined : language.language() }}</span
+              >
               @if (s.error) {
-                <p class="field-error">Code: {{ s.error }}</p>
+                <p class="field-error">{{ 'Code:' | t }} {{ s.error }}</p>
               }
             </li>
           } @empty {
-            <li>No recorded steps.</li>
+            <li>{{ 'No recorded steps.' | t }}</li>
           }
         </ol>
       </section>
     }
     <section class="panel">
-      <h2>Known in this session</h2>
+      <h2>{{ 'Known in this session' | t }}</h2>
       <ul class="record-list">
         @for (item of session.activity(); track item.kind + item.id) {
           @if (item.kind === kind()) {
@@ -152,8 +165,10 @@ import { guid, focusInvalid, Status } from '../shared/ui';
         }
       </ul>
       <p class="muted">
-        Visit records or start a diagnosis to populate this list. These are observations, not live
-        server totals.
+        {{
+          'Visit records or start a diagnosis to populate this list. These are observations, not live server totals.'
+            | t
+        }}
       </p>
     </section>`,
 })
@@ -163,6 +178,7 @@ export class Inspection implements OnDestroy {
   private workflow = inject(WorkflowApi);
   private deliveries = inject(DispatchApi);
   readonly session = inject(Session);
+  readonly language = inject(LanguageService);
   kind = signal<RecordKind>('runs');
   id = new FormControl('', { nonNullable: true, validators: [guid] });
   run = signal<Run | null>(null);

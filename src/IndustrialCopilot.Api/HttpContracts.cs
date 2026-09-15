@@ -33,7 +33,7 @@ public sealed record ReviewResponse(Guid WorkOrderId,TargetRequest Target,Conten
         s.SafetyPrerequisites.Select(p=>new RequirementResponse(p.Id,p.Description,p.IsMandatory,p.Status.ToString(),p.Verification?.VerifiedBy,p.Verification?.Evidence)).ToArray(),s.LatestDecision?.Kind.ToString());
 }
 public sealed record RunResponse(Guid RunId,Guid EquipmentId,string Symptom,string Status,bool CancellationRequested,IReadOnlyList<Guid> WorkOrderIds,IReadOnlyList<Guid> ExecutionIds);
-public sealed record WorkflowResponse(Guid RunId,Guid? WorkOrderId,Guid ExecutionId,Guid CorrelationId,string Outcome);
+public sealed record WorkflowResponse(Guid RunId,Guid? WorkOrderId,Guid ExecutionId,Guid CorrelationId,string Outcome,string? Narrative=null);
 public sealed record DispatchResponse(Guid? AttemptId,Guid? WorkOrderId,int? Revision,string Outcome,string? State,string? ExternalReference,string? Failure);
 public sealed record TraceStepResponse(string Kind,string Name,string Status,string? Error,DateTimeOffset StartedAt,DateTimeOffset? CompletedAt);
 public sealed record TraceResponse(Guid ExecutionId,Guid CorrelationId,Guid? RunId,IReadOnlyList<TraceStepResponse> Steps);

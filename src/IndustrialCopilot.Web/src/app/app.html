@@ -1,7 +1,7 @@
-<a class="skip-link" href="#main">Skip to main content</a>
+<a class="skip-link" href="#main"> {{ 'Skip to main content' | t }} </a>
 <div class="shell">
-  <aside class="sidebar">
-    <a class="brand" routerLink="/" aria-label="Maintenance Copilot home"
+  <aside class="sidebar" [attr.aria-label]="'Primary' | t">
+    <a class="brand" routerLink="/" [attr.aria-label]="'Maintenance Copilot home' | t"
       ><svg aria-hidden="true" viewBox="0 0 32 32" width="34" height="34">
         <path
           d="M4 9 16 2l12 7v14l-12 7L4 23Z"
@@ -10,7 +10,9 @@
           stroke-width="2"
         />
         <path d="m10 17 4 4 8-10" fill="none" stroke="currentColor" stroke-width="2" /></svg
-      ><span>MAINTENANCE<br /><strong>COPILOT</strong></span></a
+      ><span>
+        {{ 'MAINTENANCE' | t }} <br /><strong> {{ 'COPILOT' | t }} </strong></span
+      ></a
     >
     <button
       class="nav-toggle"
@@ -18,10 +20,10 @@
       [attr.aria-expanded]="menu()"
       aria-controls="navigation"
     >
-      {{ menu() ? 'Close navigation' : 'Open navigation' }}
+      {{ (menu() ? 'Close navigation' : 'Open navigation') | t }}
     </button>
-    <nav id="navigation" aria-label="Primary" [class.open]="menu()">
-      <p class="nav-label">OPERATIONS</p>
+    <nav id="navigation" [attr.aria-label]="'Primary' | t" [class.open]="menu()">
+      <p class="nav-label">{{ 'OPERATIONS' | t }}</p>
       @for (link of links; track link.path) {
         <a
           [routerLink]="link.path"
@@ -30,31 +32,53 @@
           ariaCurrentWhenActive="page"
           (click)="menu.set(false)"
           ><span class="nav-number" aria-hidden="true">{{ link.number }}</span
-          >{{ link.label }}</a
+          >{{ link.label | t }}</a
         >
       }
-      <p class="nav-label">HOST ACCESS</p>
+      <p class="nav-label">{{ 'HOST ACCESS' | t }}</p>
       <a
         routerLink="/connection"
         routerLinkActive="active"
         ariaCurrentWhenActive="page"
         (click)="menu.set(false)"
-        >Connection</a
       >
+        {{ 'Connection' | t }}
+      </a>
     </nav>
     <div class="sidebar-note">
-      <span class="small-rule"></span><strong>Human authority. Always.</strong>
-      <p>AI proposes. Supervisors approve. Trusted safety checks govern dispatch.</p>
+      <span class="small-rule"></span><strong> {{ 'Human authority. Always.' | t }} </strong>
+      <p>{{ 'AI proposes. Supervisors approve. Trusted safety checks govern dispatch.' | t }}</p>
     </div>
   </aside>
   <div class="workspace">
     <header class="topbar">
-      <span>INDUSTRIAL OPERATIONS <span class="muted">/ WORKSPACE</span></span
+      <div class="language-switch" role="group" aria-label="English / العربية">
+        <button
+          type="button"
+          lang="en"
+          [attr.aria-pressed]="language.language() === 'en'"
+          (click)="language.select('en')"
+        >
+          English
+        </button>
+        <button
+          type="button"
+          lang="ar"
+          [attr.aria-pressed]="language.language() === 'ar'"
+          (click)="language.select('ar')"
+        >
+          العربية
+        </button>
+      </div>
+      <span>
+        {{ 'INDUSTRIAL OPERATIONS' | t }} <span class="muted"> {{ '/ WORKSPACE' | t }} </span></span
       ><a routerLink="/connection" class="connection-pill">{{
-        session.connected() ? 'Credential configured' : 'Connect to host'
+        (session.connected() ? 'Credential configured' : 'Connect to host') | t
       }}</a>
     </header>
     <main id="main" tabindex="-1"><router-outlet /></main>
-    <footer>Evidence informs decisions. The trusted host enforces safety and permissions.</footer>
+    <footer>
+      {{ 'Evidence informs decisions. The trusted host enforces safety and permissions.' | t }}
+    </footer>
   </div>
 </div>

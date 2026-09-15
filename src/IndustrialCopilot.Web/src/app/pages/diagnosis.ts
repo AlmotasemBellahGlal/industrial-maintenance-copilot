@@ -1,3 +1,4 @@
+import { TranslatePipe, UiText, phrase } from '../core/language';
 import { Component, inject, OnDestroy, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -7,21 +8,24 @@ import { Session } from '../core/session';
 import { failure } from '../core/api';
 import { focusInvalid, guid, requiredText, Status } from '../shared/ui';
 @Component({
-  imports: [ReactiveFormsModule, RouterLink, Status],
-  template: ` <p class="eyebrow">Technician workspace</p>
-    <h1>New diagnosis</h1>
-    <p class="lede">Describe the symptom. Follow the grounded workflow to a reviewable proposal.</p>
+  imports: [TranslatePipe, ReactiveFormsModule, RouterLink, Status],
+  template: ` <p class="eyebrow">{{ 'Technician workspace' | t }}</p>
+    <h1>{{ 'New diagnosis' | t }}</h1>
+    <p class="lede">
+      {{ 'Describe the symptom. Follow the grounded workflow to a reviewable proposal.' | t }}
+    </p>
     @if (!session.connected()) {
       <div class="notice">
-        A host credential is required. <a routerLink="/connection">Configure connection</a>
+        {{ 'A host credential is required.' | t }}
+        <a routerLink="/connection"> {{ 'Configure connection' | t }} </a>
       </div>
     }
     <div class="detail-grid">
       <section class="panel">
-        <h2>Equipment & symptom</h2>
+        <h2>{{ 'Equipment & symptom' | t }}</h2>
         <form [formGroup]="form" (ngSubmit)="start()">
           <fieldset [disabled]="busy()">
-            <label for="equipment">Equipment ID</label
+            <label for="equipment"> {{ 'Equipment ID' | t }} </label
             ><input
               id="equipment"
               formControlName="equipmentId"
@@ -31,71 +35,92 @@ import { focusInvalid, guid, requiredText, Status } from '../shared/ui';
               "
             />
             <p id="equipment-help" class="muted">
-              Use a supported equipment UUID from your deployment's reviewed procedure
-              configuration.
+              {{
+                "Use a supported equipment UUID from your deployment's reviewed procedure configuration."
+                  | t
+              }}
             </p>
             @if (form.controls.equipmentId.touched && form.controls.equipmentId.invalid) {
-              <p class="field-error" role="alert">Enter a nonempty equipment UUID.</p>
+              <p class="field-error" role="alert">{{ 'Enter a nonempty equipment UUID.' | t }}</p>
             }
-            <label for="symptom">Reported symptom</label
+            <label for="symptom"> {{ 'Reported symptom' | t }} </label
             ><textarea
+              dir="auto"
               id="symptom"
               rows="6"
               formControlName="symptom"
               maxlength="2000"
-              placeholder="Describe the observed condition, operating context and changes."
+              [attr.placeholder]="
+                'Describe the observed condition, operating context and changes.' | t
+              "
               [attr.aria-invalid]="form.controls.symptom.touched && form.controls.symptom.invalid"
             ></textarea>
             @if (form.controls.symptom.touched && form.controls.symptom.invalid) {
-              <p class="field-error" role="alert">Describe the symptom using 1–2,000 characters.</p>
+              <p class="field-error" role="alert">
+                {{ 'Describe the symptom using 1–2,000 characters.' | t }}
+              </p>
             }
             <button class="primary" type="submit" [disabled]="busy() || !session.connected()">
-              {{ busy() ? 'Workflow running…' : 'Start grounded diagnosis' }}
+              {{ (busy() ? 'Workflow running…' : 'Start grounded diagnosis') | t }}
             </button>
           </fieldset>
         </form>
         @if (busy()) {
-          <button class="danger" (click)="stop()">Stop listening & request cancellation</button>
+          <button class="danger" (click)="stop()">
+            {{ 'Stop listening & request cancellation' | t }}
+          </button>
         }
         <p class="muted">
-          Disconnecting requests cancellation; it does not prove durable execution stopped. Inspect
-          any known run before starting again.
+          {{
+            'Disconnecting requests cancellation; it does not prove durable execution stopped. Inspect any known run before starting again.'
+              | t
+          }}
         </p>
       </section>
       <section class="panel">
         <div class="section-heading">
-          <h2>Live workflow progress</h2>
+          <h2>{{ 'Live workflow progress' | t }}</h2>
           <app-status [text]="busy() ? 'Running' : (result()?.outcome ?? 'Ready')" />
         </div>
         <p class="muted">
-          Safe execution events only. No hidden reasoning or estimated percentage.
+          {{ 'Safe execution events only. No hidden reasoning or estimated percentage.' | t }}
         </p>
-        <p role="status">{{ message() }}</p>
+        <p role="status">{{ message() | t }}</p>
         @if (events().length) {
           <ol class="timeline">
             @for (event of events(); track event.kind + ':' + event.role) {
               <li>
-                <strong>{{ label(event) }}</strong
+                <strong>{{ label(event) | t }}</strong
                 ><span class="muted">{{ event.kind }}</span>
               </li>
             }
           </ol>
         } @else {
-          <div class="empty"><p>Progress will appear when the host starts the workflow.</p></div>
+          <div class="empty">
+            <p>{{ 'Progress will appear when the host starts the workflow.' | t }}</p>
+          </div>
+        }
+        @if (result()?.narrative) {
+          <aside class="notice">
+            <strong>{{ 'AI explanation — advisory only' | t }}</strong>
+            <p dir="auto">{{ result()!.narrative }}</p>
+          </aside>
         }
         @if (runId()) {
-          <a class="button" [routerLink]="['/runs', runId()]">Inspect run</a>
+          <a class="button" [routerLink]="['/runs', runId()]"> {{ 'Inspect run' | t }} </a>
         }
         @if (result()?.workOrderId) {
-          <a class="button primary" [routerLink]="['/work-orders', result()!.workOrderId]"
-            >Review proposed work order</a
-          >
+          <a class="button primary" [routerLink]="['/work-orders', result()!.workOrderId]">
+            {{ 'Review proposed work order' | t }}
+          </a>
         }
         @if (executionId()) {
-          <p><a [routerLink]="['/traces', executionId()]">Inspect safe trace</a></p>
+          <p>
+            <a [routerLink]="['/traces', executionId()]"> {{ 'Inspect safe trace' | t }} </a>
+          </p>
         }
         @if (correlation()) {
-          <p class="muted identifier">Correlation {{ correlation() }}</p>
+          <p class="muted identifier">{{ 'Correlation' | t }} {{ correlation() }}</p>
         }
       </section>
     </div>`,
@@ -114,7 +139,7 @@ export class Diagnosis implements OnDestroy {
   busy = signal(false);
   events = signal<Progress[]>([]);
   result = signal<WorkflowResult | null>(null);
-  message = signal('');
+  message = signal<UiText>('');
   runId = signal('');
   executionId = signal('');
   correlation = signal('');
@@ -144,8 +169,7 @@ export class Diagnosis implements OnDestroy {
       this.message.set(
         this.controller.signal.aborted
           ? 'Disconnected; cancellation requested. Inspect the run to confirm its durable state.'
-          : failure(e) +
-              ' This stream cannot be resumed. Inspect the known run; do not automatically restart.',
+          : 'The stream could not complete. Inspect the known run before retrying; it cannot be resumed.',
       );
     } finally {
       this.busy.set(false);
@@ -161,7 +185,10 @@ export class Diagnosis implements OnDestroy {
       this.message.set(
         event.value.outcome === 'Proposed'
           ? 'Proposal ready for human review. No dispatch has been authorized.'
-          : `Workflow outcome: ${event.value.outcome}. Inspect the durable run for details.`,
+          : phrase(
+              'Workflow outcome: {0}. Inspect the durable run for details.',
+              event.value.outcome,
+            ),
       );
       this.session.remember('runs', v.runId, event.value.outcome);
       if (v.workOrderId)
@@ -176,7 +203,7 @@ export class Diagnosis implements OnDestroy {
       this.session.remember('runs', v.runId, event.value.kind);
     }
   }
-  label(e: Progress): string {
+  label(e: Progress): UiText {
     const roles: Record<number, string> = {
       1: 'Symptom Matcher',
       2: 'Diagnostic & Safety Planner',

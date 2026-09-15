@@ -1,3 +1,4 @@
+import { TranslatePipe, UiText } from '../core/language';
 import {
   Component,
   ElementRef,
@@ -27,8 +28,9 @@ export function focusInvalid(): void {
   );
 }
 @Component({
+  imports: [TranslatePipe],
   selector: 'app-status',
-  template: '<span class="badge" [attr.data-tone]="tone()">{{ text() }}</span>',
+  template: '<span class="badge" [attr.data-tone]="tone()">{{ text() | t }}</span>',
 })
 export class Status {
   readonly text = input.required<string>();
@@ -43,6 +45,7 @@ export class Status {
   }
 }
 @Component({
+  imports: [TranslatePipe],
   selector: 'app-confirm',
   template: `<dialog
     #dialog
@@ -50,16 +53,18 @@ export class Status {
     (cancel)="finish(false)"
     (close)="closed()"
   >
-    <p class="eyebrow">Consequential action</p>
-    <h2 id="confirm-title">{{ title() }}</h2>
-    <p>{{ detail() }}</p>
+    <p class="eyebrow">{{ 'Consequential action' | t }}</p>
+    <h2 id="confirm-title">{{ title() | t }}</h2>
+    <p>{{ detail() | t }}</p>
     <p class="muted">
-      The server validates the current revision and your permission. This confirmation does not
-      bypass safety checks.
+      {{
+        'The server validates the current revision and your permission. This confirmation does not bypass safety checks.'
+          | t
+      }}
     </p>
     <div class="actions">
-      <button type="button" autofocus (click)="finish(false)">Go back</button
-      ><button type="button" class="primary" (click)="finish(true)">{{ label() }}</button>
+      <button type="button" autofocus (click)="finish(false)">{{ 'Go back' | t }}</button
+      ><button type="button" class="primary" (click)="finish(true)">{{ label() | t }}</button>
     </div>
   </dialog>`,
 })
@@ -67,11 +72,11 @@ export class Confirm {
   private injector = inject(Injector);
   private trigger: HTMLElement | null = null;
   private dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
-  title = signal('');
-  detail = signal('');
-  label = signal('');
+  title = signal<UiText>('');
+  detail = signal<UiText>('');
+  label = signal<UiText>('');
   private resolve?: (value: boolean) => void;
-  ask(title: string, detail: string, label: string): Promise<boolean> {
+  ask(title: UiText, detail: UiText, label: UiText): Promise<boolean> {
     this.trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.title.set(title);
     this.detail.set(detail);

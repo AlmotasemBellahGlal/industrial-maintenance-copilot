@@ -29,6 +29,14 @@ public static class ApiHost
         configure?.Invoke(builder);
         builder.WebHost.ConfigureKestrel(o=>o.Limits.MaxRequestBodySize=128*1024);
         builder.Services.AddOpenApi();
+        builder.Services.AddLocalization(o=>o.ResourcesPath="Resources");
+        builder.Services.Configure<RequestLocalizationOptions>(o=>
+        {
+            o.SetDefaultCulture("en-US").AddSupportedCultures("en-US","en","ar-EG","ar")
+                .AddSupportedUICultures("en-US","en","ar-EG","ar");
+            o.RequestCultureProviders=[new Microsoft.AspNetCore.Localization.AcceptLanguageHeaderRequestCultureProvider()];
+            o.ApplyCurrentCultureToResponseHeaders=true;
+        });
         builder.Services.ConfigureHttpJsonOptions(o=>o.SerializerOptions.UnmappedMemberHandling=JsonUnmappedMemberHandling.Disallow);
         builder.Services.AddSingleton(HostAuthentication.Read(builder.Configuration));
         builder.Services.AddAuthentication("HostCredential").AddScheme<AuthenticationSchemeOptions,HostAuthentication>("HostCredential",_=>{});
@@ -38,6 +46,14 @@ public static class ApiHost
         int Number(string key,int fallback)=>builder.Configuration[key] is {} text?int.Parse(text):fallback;
         builder.Services.AddSingleton(new StreamingOptions(Number("Streaming:Capacity",32),Number("Streaming:WriteTimeoutSeconds",10)));
         var app=builder.Build();
+        app.UseRequestLocalization();
+        app.UseStatusCodePages(async status=>
+        {
+            var c=status.HttpContext;
+            if(c.Request.Path.StartsWithSegments("/api"))
+                await c.Response.WriteAsJsonAsync(ApiMessages.Failure(c,c.Response.StatusCode,
+                    c.Response.StatusCode switch{401=>"unauthenticated",403=>"forbidden",404=>"not_found",_=>"invalid_request"}),c.RequestAborted);
+        });
         app.Use(async(context,next)=>
         {
             try
@@ -56,7 +72,7 @@ public static class ApiHost
             {
                 if(context.Response.HasStarted){context.Abort();return;}
                 var (status,code)=error switch{ApiProblemException p=>(p.Status,p.Code),BadHttpRequestException or JsonException or ArgumentException=>(400,"invalid_request"),OperationCanceledException=>(504,"operation_timeout"),_=>(503,"dependency_unavailable")};
-                context.Response.StatusCode=status;await context.Response.WriteAsJsonAsync(new {error=code,correlationId=context.Items["correlation"]},context.RequestAborted);
+                context.Response.StatusCode=status;await context.Response.WriteAsJsonAsync(ApiMessages.Failure(context,status,code),context.RequestAborted);
             }
             finally{HostAccess.Correlation.Value=null;}
         });

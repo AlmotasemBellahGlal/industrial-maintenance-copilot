@@ -1,3 +1,4 @@
+import { LanguageService } from './language';
 import { inject, Injectable } from '@angular/core';
 import { API_BASE, ApiFailure } from './api';
 import { Session } from './session';
@@ -42,6 +43,7 @@ export function decodeEvent(name: string, data: string): StreamEvent | null {
         executionId: str(v, 'ExecutionId'),
         correlationId: str(v, 'CorrelationId'),
         outcome: str(v, 'Outcome'),
+        narrative: typeof v['Narrative'] === 'string' ? v['Narrative'] : null,
       },
     };
   if (!kinds.includes(name)) return null;
@@ -121,6 +123,7 @@ export async function readEvents(
 }
 @Injectable({ providedIn: 'root' })
 export class WorkflowStream {
+  private language = inject(LanguageService);
   private session = inject(Session);
   private base = inject(API_BASE);
   async start(
@@ -138,6 +141,7 @@ export class WorkflowStream {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
         Authorization: `Bearer ${this.session.token()}`,
+        ...this.language.requestHeaders(),
         'X-Correlation-ID': crypto.randomUUID(),
       },
       body: JSON.stringify({ equipmentId, symptom }),

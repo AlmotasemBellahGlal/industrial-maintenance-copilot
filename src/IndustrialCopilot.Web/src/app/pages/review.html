@@ -1,50 +1,56 @@
-<p class="eyebrow">Supervisor workspace</p>
+<p class="eyebrow">{{ 'Supervisor workspace' | t }}</p>
 <div class="page-heading">
   <div>
-    <h1>Work order review</h1>
+    <h1>{{ 'Work order review' | t }}</h1>
     <p class="lede">
-      Review the executable scope. Keep approval, safety verification and dispatch separate.
+      {{
+        'Review the executable scope. Keep approval, safety verification and dispatch separate.' | t
+      }}
     </p>
   </div>
-  <button (click)="load()" [disabled]="busy()">Reload current review</button>
+  <button (click)="load()" [disabled]="busy()">{{ 'Reload current review' | t }}</button>
 </div>
 @if (error()) {
   <div class="notice danger" role="alert">
-    {{ error() }} <a routerLink="/connection">Connection settings</a>
+    {{ error() | t }} <a routerLink="/connection"> {{ 'Connection settings' | t }} </a>
   </div>
 }
 @if (stale()) {
   <div class="notice">
-    Actions are paused. Reload and review the current server state before continuing. Edited fields
-    remain visible until reload.
+    {{
+      'Actions are paused. Reload and review the current server state before continuing. Edited fields remain visible until reload.'
+        | t
+    }}
   </div>
 }
-<p role="status">{{ busy() ? 'Waiting for confirmation or host response…' : message() }}</p>
+<p role="status">{{ (busy() ? 'Waiting for confirmation or host response…' : message()) | t }}</p>
 @if (review(); as r) {
   <div class="review-strip">
     <span class="identifier">{{ r.workOrderId }}</span
-    ><strong>Revision {{ r.target.revision }}</strong
+    ><strong> {{ 'Revision' | t }} {{ r.target.revision }}</strong
     ><app-status [text]="r.status" />
   </div>
   <div class="detail-grid">
     <section class="panel">
-      <p class="eyebrow">Executable scope</p>
+      <p class="eyebrow">{{ 'Executable scope' | t }}</p>
       <h2>{{ r.content.description }}</h2>
       <p class="notice">
-        AI-origin proposal content is advisory until reviewed. Evidence does not grant safety or
-        dispatch authority.
+        {{
+          'AI-origin proposal content is advisory until reviewed. Evidence does not grant safety or dispatch authority.'
+            | t
+        }}
       </p>
       <dl>
-        <dt>Equipment</dt>
+        <dt>{{ 'Equipment' | t }}</dt>
         <dd>{{ r.content.equipmentId }}</dd>
-        <dt>Reported symptom</dt>
+        <dt>{{ 'Reported symptom' | t }}</dt>
         <dd>{{ r.content.reportedSymptom }}</dd>
-        <dt>Manual</dt>
+        <dt>{{ 'Manual' | t }}</dt>
         <dd>{{ r.content.manualId }}</dd>
-        <dt>Manual revision</dt>
+        <dt>{{ 'Manual revision' | t }}</dt>
         <dd>{{ r.content.manualRevisionId }}</dd>
       </dl>
-      <h3>Ordered actions</h3>
+      <h3>{{ 'Ordered actions' | t }}</h3>
       <ol class="action-list">
         @for (action of r.content.actions; track action.order) {
           <li>
@@ -55,32 +61,34 @@
       </ol>
       @if (r.status === 'Draft') {
         <button class="primary" (click)="submit()" [disabled]="busy() || stale()">
-          Submit for supervisor review
+          {{ 'Submit for supervisor review' | t }}
         </button>
       }
       @if (r.status === 'PendingApproval' && !editing()) {
         <div class="actions">
           <button class="primary" (click)="decide('Approve')" [disabled]="busy() || stale()">
-            Approve revision {{ r.target.revision }}</button
-          ><button (click)="edit()" [disabled]="busy() || stale()">Edit & approve</button
+            {{ 'Approve revision' | t }} {{ r.target.revision }}</button
+          ><button (click)="edit()" [disabled]="busy() || stale()">
+            {{ 'Edit & approve' | t }}</button
           ><button class="danger" (click)="decide('Reject')" [disabled]="busy() || stale()">
-            Reject
+            {{ 'Reject' | t }}
           </button>
         </div>
       }
       @if (r.status === 'Rejected' || r.status === 'Dispatched') {
         <p>
-          This work order is {{ r.status.toLowerCase() }}. Further editing and dispatch are
-          unavailable.
+          {{ 'This work order is' | t }} {{ r.status.toLowerCase() | t }}
+          {{ '. Further editing and dispatch are unavailable.' | t }}
         </p>
       }
     </section>
     <section class="panel">
-      <p class="eyebrow">Trusted host assessment</p>
-      <h2>Authoritative safety requirements</h2>
+      <p class="eyebrow">{{ 'Trusted host assessment' | t }}</p>
+      <h2>{{ 'Authoritative safety requirements' | t }}</h2>
       <p>
-        Assessment revision: <strong>{{ r.safetyAssessmentRevision ?? 'Not assessed' }}</strong
-        >. Human verification is separate from supervisor approval.
+        {{ 'Assessment revision:' | t }}
+        <strong>{{ r.safetyAssessmentRevision ?? ('Not assessed' | t) }}</strong>
+        {{ '. Human verification is separate from supervisor approval.' | t }}
       </p>
       <ul class="safety-list">
         @for (p of r.requirements; track p.id) {
@@ -89,57 +97,67 @@
               <strong>{{ p.description }}</strong
               ><app-status [text]="p.status === 'Unverified' ? 'Not verified' : p.status" />
             </div>
-            <p>{{ p.mandatory ? 'Mandatory prerequisite' : 'Optional prerequisite' }}</p>
+            <p>{{ (p.mandatory ? 'Mandatory prerequisite' : 'Optional prerequisite') | t }}</p>
             @if (p.verifiedBy) {
-              <p>Verified by {{ p.verifiedBy }} · {{ p.evidence }}</p>
+              <p>{{ 'Verified by' | t }} {{ p.verifiedBy }} · {{ p.evidence }}</p>
             }
           </li>
         } @empty {
           <li>
             {{
-              r.safetyAssessmentRevision === r.target.revision
+              (r.safetyAssessmentRevision === r.target.revision
                 ? 'Explicit server assessment contains no mandatory requirement set.'
                 : 'No current safety assessment. An empty list does not authorize dispatch.'
+              ) | t
             }}
           </li>
         }
       </ul>
       @if (r.status === 'Approved' || r.status === 'PendingApproval' || r.status === 'Draft') {
         <details>
-          <summary>Record a human safety check</summary>
+          <summary>{{ 'Record a human safety check' | t }}</summary>
           <p>
-            Only an authorized verifier may record checks actually performed. AI cannot verify these
-            conditions.
+            {{
+              'Only an authorized verifier may record checks actually performed. AI cannot verify these conditions.'
+                | t
+            }}
           </p>
           <form [formGroup]="verification" (ngSubmit)="verify()">
             <fieldset [disabled]="busy() || stale()">
-              <label for="requirement">Prerequisite</label
+              <label for="requirement"> {{ 'Prerequisite' | t }} </label
               ><select id="requirement" formControlName="prerequisiteId">
-                <option value="">Select prerequisite</option>
+                <option value="">{{ 'Select prerequisite' | t }}</option>
                 @for (p of r.requirements; track p.id) {
                   <option [value]="p.id">{{ p.description }}</option>
                 }</select
-              ><label for="verification-evidence">Physical verification evidence</label
+              ><label for="verification-evidence">
+                {{ 'Physical verification evidence' | t }} </label
               ><textarea
+                dir="auto"
                 id="verification-evidence"
                 formControlName="evidence"
                 maxlength="4000"
                 rows="3"
               ></textarea
               ><label class="check"
-                ><input type="checkbox" formControlName="satisfied" />I verified this prerequisite
-                is satisfied</label
-              >
+                ><input type="checkbox" formControlName="satisfied" />
+                {{ 'I verified this prerequisite is satisfied' | t }}
+              </label>
               <p class="muted">
-                Unchecked records an unsatisfied prerequisite; it does not satisfy the dispatch
-                gate.
+                {{
+                  'Unchecked records an unsatisfied prerequisite; it does not satisfy the dispatch gate.'
+                    | t
+                }}
               </p>
               @if (verification.touched && verification.invalid) {
                 <p class="field-error" role="alert">
-                  Select a prerequisite and provide nonblank evidence (up to 4,000 characters).
+                  {{
+                    'Select a prerequisite and provide nonblank evidence (up to 4,000 characters).'
+                      | t
+                  }}
                 </p>
               }
-              <button type="submit">Review verification</button>
+              <button type="submit">{{ 'Review verification' | t }}</button>
             </fieldset>
           </form>
         </details>
@@ -148,17 +166,19 @@
   </div>
   @if (editing()) {
     <section class="panel">
-      <p class="eyebrow">Final scope review</p>
-      <h2>Edit & approve</h2>
+      <p class="eyebrow">{{ 'Final scope review' | t }}</p>
+      <h2>{{ 'Edit & approve' | t }}</h2>
       <p>
-        Equipment is fixed. Changing the manual, revision or instructions requires a new trusted
-        assessment. Requirements below cannot be edited by the browser.
+        {{
+          'Equipment is fixed. Changing the manual, revision or instructions requires a new trusted assessment. Requirements below cannot be edited by the browser.'
+            | t
+        }}
       </p>
       <form [formGroup]="form" (ngSubmit)="assess()">
         <fieldset [disabled]="busy() || stale()">
           <div class="form-grid">
             <div>
-              <label for="manual">Manual ID</label
+              <label for="manual"> {{ 'Manual ID' | t }} </label
               ><input
                 id="manual"
                 formControlName="manualId"
@@ -169,12 +189,12 @@
               />
               <p id="manual-error" class="field-error">
                 @if (form.controls.manualId.touched && form.controls.manualId.invalid) {
-                  Enter a nonempty manual UUID.
+                  {{ 'Enter a nonempty manual UUID.' | t }}
                 }
               </p>
             </div>
             <div>
-              <label for="manual-revision">Manual revision ID</label
+              <label for="manual-revision"> {{ 'Manual revision ID' | t }} </label
               ><input
                 id="manual-revision"
                 formControlName="manualRevisionId"
@@ -187,13 +207,14 @@
                 @if (
                   form.controls.manualRevisionId.touched && form.controls.manualRevisionId.invalid
                 ) {
-                  Enter a nonempty manual revision UUID.
+                  {{ 'Enter a nonempty manual revision UUID.' | t }}
                 }
               </p>
             </div>
           </div>
-          <label for="edited-symptom">Reported symptom</label
+          <label for="edited-symptom"> {{ 'Reported symptom' | t }} </label
           ><textarea
+            dir="auto"
             id="edited-symptom"
             formControlName="reportedSymptom"
             maxlength="2000"
@@ -204,11 +225,12 @@
           ></textarea>
           <p id="symptom-error" class="field-error">
             @if (form.controls.reportedSymptom.touched && form.controls.reportedSymptom.invalid) {
-              Enter a symptom of 1–2,000 characters.
+              {{ 'Enter a symptom of 1–2,000 characters.' | t }}
             }
           </p>
-          <label for="description">Work order description</label
+          <label for="description"> {{ 'Work order description' | t }} </label
           ><textarea
+            dir="auto"
             id="description"
             formControlName="description"
             maxlength="4000"
@@ -219,14 +241,15 @@
           ></textarea>
           <p id="description-error" class="field-error">
             @if (form.controls.description.touched && form.controls.description.invalid) {
-              Enter a description of 1–4,000 characters.
+              {{ 'Enter a description of 1–4,000 characters.' | t }}
             }
           </p>
           <div formArrayName="actions">
             @for (control of form.controls.actions.controls; track control; let i = $index) {
-              <label [for]="'action-' + i">Action {{ i + 1 }}</label>
+              <label [for]="'action-' + i"> {{ 'Action' | t }} {{ i + 1 }}</label>
               <div class="action-editor">
                 <textarea
+                  dir="auto"
                   [id]="'action-' + i"
                   [formControlName]="i"
                   maxlength="2000"
@@ -237,14 +260,14 @@
                   type="button"
                   (click)="removeAction(i)"
                   [disabled]="form.controls.actions.length === 1"
-                  [attr.aria-label]="'Remove action ' + (i + 1)"
+                  [attr.aria-label]="('Remove action' | t) + ' ' + (i + 1)"
                 >
-                  Remove
+                  {{ 'Remove' | t }}
                 </button>
               </div>
               <p [id]="'action-error-' + i" class="field-error">
                 @if (control.touched && control.invalid) {
-                  Enter an instruction of 1–2,000 characters.
+                  {{ 'Enter an instruction of 1–2,000 characters.' | t }}
                 }
               </p>
             }
@@ -254,40 +277,44 @@
             (click)="addAction()"
             [disabled]="form.controls.actions.length >= 32"
           >
-            Add action
+            {{ 'Add action' | t }}
           </button>
           @if (form.touched && form.invalid) {
             <p class="field-error" role="alert">
-              Use valid manual UUIDs and nonblank text. Symptom/actions: up to 2,000 characters;
-              description: up to 4,000. At least one action is required.
+              {{
+                'Use valid manual UUIDs and nonblank text. Symptom/actions: up to 2,000 characters; description: up to 4,000. At least one action is required.'
+                  | t
+              }}
             </p>
           }
           <div class="actions">
-            <button class="primary" type="submit">Assess edited scope</button
-            ><button type="button" (click)="cancelEdit()">Cancel editing</button>
+            <button class="primary" type="submit">{{ 'Assess edited scope' | t }}</button
+            ><button type="button" (click)="cancelEdit()">{{ 'Cancel editing' | t }}</button>
           </div>
         </fieldset>
       </form>
       @if (preview(); as p) {
         <div class="assessment">
-          <h3>Authoritative requirements for this exact edit</h3>
+          <h3>{{ 'Authoritative requirements for this exact edit' | t }}</h3>
           <ul>
             @for (item of p.requirements; track item.id) {
               <li>
                 <strong>{{ item.description }}</strong> —
-                {{ item.mandatory ? 'Mandatory' : 'Optional'
+                {{ (item.mandatory ? 'Mandatory' : 'Optional') | t
                 }}<span class="identifier">{{ item.id }}</span>
               </li>
             } @empty {
-              <li>Trusted policy explicitly assessed an empty requirement set.</li>
+              <li>{{ 'Trusted policy explicitly assessed an empty requirement set.' | t }}</li>
             }
           </ul>
           <p>
-            Confirming approves this final edited scope and these requirements. Old verifications do
-            not transfer. Any further edit clears this preview.
+            {{
+              'Confirming approves this final edited scope and these requirements. Old verifications do not transfer. Any further edit clears this preview.'
+                | t
+            }}
           </p>
           <button class="primary" (click)="decide('EditAndApprove')" [disabled]="busy() || stale()">
-            Review final edit & approval
+            {{ 'Review final edit & approval' | t }}
           </button>
         </div>
       }
@@ -296,48 +323,58 @@
   <section class="panel">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">Manual provenance</p>
-        <h2>Grounded evidence</h2>
+        <p class="eyebrow">{{ 'Manual provenance' | t }}</p>
+        <h2>{{ 'Grounded evidence' | t }}</h2>
       </div>
-      <span class="badge">Original proposal citations</span>
+      <span class="badge"> {{ 'Original proposal citations' | t }} </span>
     </div>
     <p class="muted">
-      Historical citations from the original proposal. They are not proof that a later edited scope
-      is supported. The server's exact-scope policy remains authoritative.
+      {{
+        "Historical citations from the original proposal. They are not proof that a later edited scope is supported. The server's exact-scope policy remains authoritative."
+          | t
+      }}
     </p>
     @if (evidenceError()) {
-      <p class="notice danger" role="alert">Evidence could not be loaded: {{ evidenceError() }}</p>
+      <p class="notice danger" role="alert">
+        {{ 'Evidence could not be loaded:' | t }} {{ evidenceError() | t }}
+      </p>
     }
     @for (e of evidence()?.evidence ?? []; track e.documentId + e.manualRevisionId + e.chunkId) {
       <article class="citation">
         <h3>{{ e.locator }}</h3>
         <blockquote>{{ e.snippet }}</blockquote>
         <dl>
-          <dt>Document</dt>
+          <dt>{{ 'Document' | t }}</dt>
           <dd>{{ e.documentId }}</dd>
-          <dt>Revision</dt>
+          <dt>{{ 'Revision' | t }}</dt>
           <dd>{{ e.manualRevisionId }}</dd>
-          <dt>Chunk</dt>
+          <dt>{{ 'Chunk' | t }}</dt>
           <dd>{{ e.chunkId }}</dd>
         </dl>
       </article>
     } @empty {
-      <p>No citations returned. This view does not imply grounding where none is available.</p>
+      <p>
+        {{
+          'No citations returned. This view does not imply grounding where none is available.' | t
+        }}
+      </p>
     }
   </section>
   <section class="panel dispatch-panel">
-    <p class="eyebrow">External side effect</p>
-    <h2>Dispatch confirmation</h2>
+    <p class="eyebrow">{{ 'External side effect' | t }}</p>
+    <h2>{{ 'Dispatch confirmation' | t }}</h2>
     <div class="actions">
-      <app-status
-        [text]="
-          r.status === 'Approved' ? 'Supervisor approved' : 'Supervisor approval: ' + r.status
-        "
-      /><span class="badge">Assessment revision {{ r.safetyAssessmentRevision ?? 'missing' }}</span>
+      <app-status [text]="r.status === 'Approved' ? 'Supervisor approved' : r.status" /><span
+        class="badge"
+        >{{ 'Assessment revision:' | t }}
+        {{ r.safetyAssessmentRevision ?? ('Not assessed' | t) }}</span
+      >
     </div>
     <p>
-      The server must confirm current supervisor approval and all mandatory verified prerequisites.
-      Browser state alone never proves eligibility.
+      {{
+        'The server must confirm current supervisor approval and all mandatory verified prerequisites. Browser state alone never proves eligibility.'
+          | t
+      }}
     </p>
     @if (r.status === 'Approved') {
       <button
@@ -345,21 +382,23 @@
         (click)="send()"
         [disabled]="busy() || stale() || dispatchRequested()"
       >
-        Review dispatch request
+        {{ 'Review dispatch request' | t }}
       </button>
     }
     @if (dispatchRequested()) {
       <p class="notice">
-        A dispatch request was made in this view. Do not repeat it. Inspect the existing attempt or
-        current work order; uncertain delivery is neither success nor failure.
+        {{
+          'A dispatch request was made in this view. Do not repeat it. Inspect the existing attempt or current work order; uncertain delivery is neither success nor failure.'
+            | t
+        }}
       </p>
     }
     @if (dispatch(); as d) {
       <app-status [text]="d.state ?? d.outcome" />
       @if (d.attemptId) {
         <p>
-          <a [routerLink]="['/dispatch', d.attemptId]"
-            >Inspect dispatch attempt {{ d.attemptId }}</a
+          <a [routerLink]="['/dispatch', d.attemptId]">
+            {{ 'Inspect dispatch attempt' | t }} {{ d.attemptId }}</a
           >
         </p>
       }
