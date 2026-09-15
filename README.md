@@ -71,3 +71,7 @@ See [DEMO-GUIDE](docs/DEMO-GUIDE.md) for the synthetic pump scenario, real Postg
 ## Assessment corpus and ingestion
 
 See [CORPUS-INGESTION](docs/CORPUS-INGESTION.md) for the synthetic 31-document / 150-page corpus, UTF-8 and PDF pipeline, durable status, deterministic ingestion/retrieval smoke and operator commands.
+
+## RAG evaluation (FR-3)
+
+See [EVALUATION.md](docs/EVALUATION.md) for the 30-case frozen golden set, real PostgreSQL execution commands, metric definitions and measured deterministic baseline. Run `dotnet run --project tools/IndustrialCopilot.Evaluation -- --validate` to validate the dataset without a database. Quality limitations and poor baseline scores are reported explicitly; no paid model is required.
