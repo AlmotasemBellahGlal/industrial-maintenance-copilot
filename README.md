@@ -75,3 +75,7 @@ See [CORPUS-INGESTION](docs/CORPUS-INGESTION.md) for the synthetic 31-document /
 ## RAG evaluation (FR-3)
 
 See [EVALUATION.md](docs/EVALUATION.md) for the 30-case frozen golden set, real PostgreSQL execution commands, metric definitions and measured deterministic baseline. Run `dotnet run --project tools/IndustrialCopilot.Evaluation -- --validate` to validate the dataset without a database. Quality limitations and poor baseline scores are reported explicitly; no paid model is required.
+
+## Security controls
+
+See [SECURITY.md](docs/SECURITY.md) for the threat/control evidence matrix, technician/supervisor demo credentials, hosted data redaction, limits, deployment obligations and reproducible full-history/dependency scans.

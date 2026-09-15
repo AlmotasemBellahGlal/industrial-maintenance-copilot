@@ -6,6 +6,23 @@ on:
       - main
 
 jobs:
+  security:
+    name: Full-history secrets and dependency security gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+      - run: python3 scripts/security/scan.py secrets
+      - run: dotnet restore
+      - run: python3 scripts/security/scan.py dependencies
+
   frontend:
     name: Angular build, contracts and accessible browser workflows
     runs-on: ubuntu-latest
@@ -100,6 +117,9 @@ jobs:
             sleep 1
           done
           curl --fail http://127.0.0.1:5000/health/ready
+
+      - name: Real technician versus supervisor authorization proof
+        run: python3 scripts/security/demo_roles.py
 
       - name: Durable reasoning process crash, recovery, cancellation and bilingual safety proof
         timeout-minutes: 5
