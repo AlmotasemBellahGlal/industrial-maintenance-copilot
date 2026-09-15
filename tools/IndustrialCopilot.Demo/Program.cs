@@ -33,6 +33,7 @@ if(args.Contains("--worker"))
     using var host=builder.Build();await host.RunAsync();return;
 }
 var token=Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+var technicianToken=Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 var equipment="11111111-1111-1111-1111-111111111111";
 var config=new Dictionary<string,string?>
 {
@@ -41,6 +42,9 @@ var config=new Dictionary<string,string?>
     ["Dispatch:Adapter"]="PostgresInbox",["Worker:EquipmentIds"]=equipment,["Worker:IntervalSeconds"]="5",
     ["Authentication:Credentials:0:Actor"]="demo-supervisor",["Authentication:Credentials:0:Secret"]=token,
     ["Authentication:Credentials:0:Permissions"]="read,start,approve,verify,dispatch",["Authentication:Credentials:0:EquipmentIds"]=equipment,
+    ["Authentication:Credentials:1:Actor"]="demo-technician",["Authentication:Credentials:1:Secret"]=technicianToken,
+    ["Authentication:Credentials:1:Permissions"]="read,start",["Authentication:Credentials:1:EquipmentIds"]=equipment,
+    ["Security:AllowedOrigins:0"]="http://127.0.0.1:4300",
     ["Llm:PrimaryProvider"]="Ollama",["Llm:EmbeddingProvider"]="Ollama",["Llm:FallbackEnabled"]="false",
     ["Llm:Ollama:Endpoint"]="http://127.0.0.1:11434/",["Llm:Ollama:ChatModel"]="demo-test-v1",["Llm:Ollama:EmbeddingModel"]="demo-test-v1",
     ["Llm:Ollama:RequestTimeoutSeconds"]="30",["Llm:Ollama:StreamTimeoutSeconds"]="60",
@@ -65,5 +69,6 @@ var artifacts=Path.Combine(root,"artifacts/issue25");Directory.CreateDirectory(a
 // Ephemeral credentials/config are ignored artifacts; never printed in logs.
 await File.WriteAllTextAsync(Path.Combine(artifacts,"host.json"),JsonSerializer.Serialize(config));
 await File.WriteAllTextAsync(Path.Combine(artifacts,"credential.txt"),token);
+await File.WriteAllTextAsync(Path.Combine(artifacts,"technician-credential.txt"),technicianToken);
 Console.WriteLine("SYNTHETIC DEMO ONLY. Credential and Worker configuration: artifacts/issue25 (untracked).");
 await app.RunAsync();

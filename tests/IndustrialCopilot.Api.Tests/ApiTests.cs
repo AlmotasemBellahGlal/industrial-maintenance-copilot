@@ -76,14 +76,17 @@ public class ApiTests
         internal Scenario Scenario=new(); internal WebApplication App=null!; internal HttpClient Client=null!;
         internal RecordWorkOrderDecisionRequest? Decision; internal int DispatchCalls; internal bool FailReview;
         public Harness(){Scenario.Retrieval.Fail=false;Scenario.Retrieval.WrongRevision=false;Scenario.Store.PublishConflict=false;Scenario.Trace.FailFinal=false;}
-        internal async Task Start(string permissions="read,start,approve,verify,dispatch",int capacity=32)
+        internal async Task Start(string permissions="read,start,approve,verify,dispatch",int capacity=32, int permits=30, string environment="Testing")
         {
-            App=ApiHost.Build(["--environment","Testing"],b=>
+            App=ApiHost.Build(["--environment",environment],b=>
             {
                 b.WebHost.UseUrls("http://127.0.0.1:0");b.Logging.ClearProviders();
                 b.Configuration.AddInMemoryCollection(new Dictionary<string,string?>{
                     ["Authentication:Credentials:0:Actor"]="authenticated-supervisor",["Authentication:Credentials:0:Secret"]=new('x',32),
-                    ["Authentication:Credentials:0:Permissions"]=permissions,["Authentication:Credentials:0:EquipmentIds"]=Scenario.Candidate.EquipmentId.ToString(),["Streaming:Capacity"]=capacity.ToString()});
+                    ["Authentication:Credentials:0:Permissions"]=permissions,["Authentication:Credentials:0:EquipmentIds"]=Scenario.Candidate.EquipmentId.ToString(),["Streaming:Capacity"]=capacity.ToString(),
+                    ["Security:MutationPermits"]=permits.ToString(),["Security:AllowedOrigins:0"]="http://127.0.0.1:4300",
+                    ["Authentication:Credentials:1:Actor"]="technician",["Authentication:Credentials:1:Secret"]=new('t',32),
+                    ["Authentication:Credentials:1:Permissions"]="read,start",["Authentication:Credentials:1:EquipmentIds"]=Scenario.Candidate.EquipmentId.ToString()});
                 b.Services.AddSingleton<IWorkflowStore>(Scenario.Store);b.Services.AddSingleton<IRunTraceStore>(Scenario.Trace);
                 b.Services.AddSingleton(Scenario.Orchestrator());b.Services.AddSingleton<IExecutableSafetyPolicy>(Scenario.Policy());
                 b.Services.AddSingleton<IReadOnlyList<ApprovedMaintenanceProcedure>>(new[]{new ApprovedMaintenanceProcedure(Scenario.Candidate,["Check vibration"],["Inspect seal"],"Inspect isolated pump",[Scenario.Requirement])});
@@ -188,5 +191,78 @@ public class ApiTests
         {
             h.Scenario.Success();await h.Start(capacity:4);await h.StartRun(true);Assert.Equal(0,h.Scenario.Store.Publishes);
         }
+    }
+
+    [Fact]
+    public async Task ActorBudgetCannotBeBypassedByResourceIdsAndDoesNotBlockHealth()
+    {
+        await using var h=new Harness(); await h.Start(permits:1);
+        var first=await h.Client.PostAsJsonAsync("/api/runs",new StartRunRequest(Guid.NewGuid(),"vibration"));
+        Assert.Equal(HttpStatusCode.Forbidden,first.StatusCode);
+        var limited=await h.Client.PostAsJsonAsync("/api/runs",new StartRunRequest(Guid.NewGuid(),"vibration"));
+        Assert.Equal(HttpStatusCode.TooManyRequests,limited.StatusCode);Assert.NotNull(limited.Headers.RetryAfter);
+        Assert.Contains("rate_limited",await limited.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK,(await h.Client.GetAsync("/health/live")).StatusCode);
+        h.Client.DefaultRequestHeaders.Authorization=new("Bearer",new string('t',32));
+        Assert.Equal(HttpStatusCode.Forbidden,(await h.Client.PostAsJsonAsync("/api/runs",new StartRunRequest(Guid.NewGuid(),"vibration"))).StatusCode);
+    }
+    [Fact]
+    public async Task TechnicianCannotApproveVerifyOrDispatchSupervisorCanApprove()
+    {
+        await using var h=new Harness();h.Scenario.Success();await h.Start();
+        var workflow=(await (await h.StartRun()).Content.ReadFromJsonAsync<WorkflowResponse>())!;
+        var review=(await h.Client.GetFromJsonAsync<ReviewResponse>("/api/work-orders/"+workflow.WorkOrderId))!;
+        h.Client.DefaultRequestHeaders.Authorization=new("Bearer",new string('t',32));
+        Assert.Equal(HttpStatusCode.OK,(await h.Client.GetAsync("/api/work-orders/"+workflow.WorkOrderId)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,(await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/decisions",new DecisionRequest(review.Target,"Approve"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,(await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/verifications",new VerificationRequest(review.Target,h.Scenario.Requirement.Id,"physical",true))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,(await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/dispatch",review.Target)).StatusCode);
+        Assert.Null(h.Decision);Assert.Equal(0,h.DispatchCalls);
+        h.Client.DefaultRequestHeaders.Authorization=new("Bearer",new string('x',32));
+        Assert.Equal(HttpStatusCode.OK,(await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/decisions",new DecisionRequest(review.Target,"Approve"))).StatusCode);
+    }
+    [Theory]
+    [InlineData("http://127.0.0.1:4300",true)]
+    [InlineData("https://attacker.invalid",false)]
+    public async Task CorsIsAnExplicitAllowlistAndApiHeadersAreSafe(string origin,bool allowed)
+    {
+        await using var h=new Harness();await h.Start();
+        using var request=new HttpRequestMessage(HttpMethod.Options,"/api/runs");
+        request.Headers.Add("Origin",origin);request.Headers.Add("Access-Control-Request-Method","POST");
+        request.Headers.Add("Access-Control-Request-Headers","authorization,content-type");
+        var response=await h.Client.SendAsync(request);
+        Assert.Equal(allowed,response.Headers.Contains("Access-Control-Allow-Origin"));
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Credentials"));
+        Assert.Equal("nosniff",response.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Equal("DENY",response.Headers.GetValues("X-Frame-Options").Single());
+        Assert.Contains("default-src 'none'",response.Headers.GetValues("Content-Security-Policy").Single());
+    }
+    [Theory]
+    [InlineData(2001,400)]
+    [InlineData(140000,413)]
+    public async Task OversizedQuestionsAndBodiesFailBeforeReasoning(int size,int status)
+    {
+        await using var h=new Harness();await h.Start();
+        var response=await h.Client.PostAsJsonAsync("/api/runs",new StartRunRequest(h.Scenario.Candidate.EquipmentId,new string('a',size)));
+        Assert.Equal(status,(int)response.StatusCode);Assert.Equal(0,h.Scenario.Llm.Calls);
+    }
+
+    [Fact]
+    public async Task PatchedOpenApiStillGeneratesDevelopmentSchema()
+    {
+        await using var h=new Harness();await h.Start(environment:"Development");
+        var response=await h.Client.GetAsync("/openapi/v1.json");
+        Assert.Equal(HttpStatusCode.OK,response.StatusCode);
+        using var schema=JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(schema.RootElement.GetProperty("paths").TryGetProperty("/api/jobs/",out _) || schema.RootElement.GetProperty("paths").TryGetProperty("/api/jobs",out _));
+    }
+    [Fact]
+    public async Task ProductionHttpIsRejectedWithoutTrustingForwardedHeaders()
+    {
+        await using var h=new Harness();await h.Start(environment:"Production");
+        h.Client.DefaultRequestHeaders.Add("X-Forwarded-Proto","https");
+        var response=await h.StartRun();Assert.Equal(HttpStatusCode.BadRequest,response.StatusCode);
+        Assert.Contains("https_required",await response.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.NotFound,(await h.Client.GetAsync("/openapi/v1.json")).StatusCode);
     }
 }

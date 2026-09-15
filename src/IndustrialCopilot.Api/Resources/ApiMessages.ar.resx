@@ -15,4 +15,8 @@
 <data name="TimeoutDetail" xml:space="preserve"><value>افحص السجل الحالي قبل إعادة المحاولة.</value></data>
 <data name="Unavailable" xml:space="preserve"><value>الخدمة غير متاحة</value></data>
 <data name="UnavailableDetail" xml:space="preserve"><value>قد تكون النتيجة غير معروفة. افحص السجل قبل إعادة محاولة عملية لها آثار فعلية.</value></data>
+<data name="RateLimited" xml:space="preserve"><value>طلبات كثيرة؛ حاول لاحقًا.</value></data>
+<data name="RateLimitedDetail" xml:space="preserve"><value>انتظر المدة المحددة قبل إعادة المحاولة.</value></data>
+<data name="PayloadTooLarge" xml:space="preserve"><value>حجم الطلب أكبر من المسموح.</value></data>
+<data name="PayloadTooLargeDetail" xml:space="preserve"><value>قلل حجم الطلب ثم أعد المحاولة.</value></data>
 </root>

@@ -56,6 +56,7 @@ public static class ApiHost
         configure?.Invoke(builder);
         builder.WebHost.ConfigureKestrel(o=>o.Limits.MaxRequestBodySize=128*1024);
         builder.Services.AddOpenApi();
+        ApiSecurity.Register(builder);
         builder.Services.AddLocalization(o=>o.ResourcesPath="Resources");
         builder.Services.Configure<RequestLocalizationOptions>(o=>
         {
@@ -74,6 +75,25 @@ public static class ApiHost
         builder.Services.AddSingleton(new StreamingOptions(Number("Streaming:Capacity",32),Number("Streaming:WriteTimeoutSeconds",10)));
         var app=builder.Build();
         app.UseRequestLocalization();
+        if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing")) app.UseHsts();
+        app.Use(async (context, next) =>
+        {
+            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            context.Response.Headers["X-Frame-Options"] = "DENY";
+            context.Response.Headers["Referrer-Policy"] = "no-referrer";
+            context.Response.Headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
+            context.Response.Headers.CacheControl = "no-store";
+            try { await next(context); }
+            finally
+            {
+                // Route templates only: never log headers, request bodies, user paths or raw exceptions.
+                if (context.Request.Path.StartsWithSegments("/api"))
+                    app.Logger.LogInformation("Security HTTP {Method} {Route} status {Status} correlation {Correlation}",
+                        context.Request.Method, (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? "unmatched",
+                        context.Response.StatusCode, context.Items["correlation"]);
+            }
+        });
+        app.UseCors();
         app.UseStatusCodePages(async status=>
         {
             var c=status.HttpContext;
@@ -98,12 +118,12 @@ public static class ApiHost
             catch(Exception error)
             {
                 if(context.Response.HasStarted){context.Abort();return;}
-                var (status,code)=error switch{ApiProblemException p=>(p.Status,p.Code),BadHttpRequestException or JsonException or ArgumentException=>(400,"invalid_request"),OperationCanceledException=>(504,"operation_timeout"),_=>(503,"dependency_unavailable")};
+                var (status,code)=error switch{BadHttpRequestException { StatusCode: 413 }=>(413,"payload_too_large"),ApiProblemException p=>(p.Status,p.Code),BadHttpRequestException or JsonException or ArgumentException=>(400,"invalid_request"),OperationCanceledException=>(504,"operation_timeout"),_=>(503,"dependency_unavailable")};
                 context.Response.StatusCode=status;await context.Response.WriteAsJsonAsync(ApiMessages.Failure(context,status,code),context.RequestAborted);
             }
             finally{HostAccess.Correlation.Value=null;}
         });
-        app.UseAuthentication();app.UseAuthorization();
+        app.UseAuthentication();app.UseAuthorization();app.UseRateLimiter();
         app.MapGet("/health/live",()=>Results.Ok(new{status="alive"}));
         app.MapGet("/health/ready",async(HttpContext c)=>
         {
