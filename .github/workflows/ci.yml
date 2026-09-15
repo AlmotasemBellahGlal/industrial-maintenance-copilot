@@ -58,3 +58,33 @@ jobs:
         run: dotnet build
       - name: Test including isolated pgvector integration tests
         run: dotnet test --no-build --logger "trx;LogFilePrefix=tests"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: src/IndustrialCopilot.Web/package-lock.json
+      - name: Start isolated deterministic demo API and Worker
+        env:
+          PGPASSWORD: isolated_ci_only
+          ASPNETCORE_ENVIRONMENT: Development
+          DEMO_POSTGRES: Host=localhost;Port=5432;Database=maintenance_demo;Username=postgres;Password=isolated_ci_only
+        run: |
+          psql -h localhost -U postgres -d postgres -c 'CREATE DATABASE maintenance_demo'
+          mkdir -p artifacts/issue25
+          dotnet run --no-build --project tools/IndustrialCopilot.Demo -- --demo > artifacts/issue25/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:5000/health/ready; then break; fi
+            sleep 1
+          done
+          curl --fail http://127.0.0.1:5000/health/ready
+          MAINTENANCE_CONFIG="$PWD/artifacts/issue25/host.json" dotnet run --no-build --project src/IndustrialCopilot.Worker > artifacts/issue25/worker.log 2>&1 &
+      - name: Real HTTP/PostgreSQL bilingual smoke
+        run: node tools/demo-smoke.mjs
+      - name: Browser integration against the real demo host
+        working-directory: src/IndustrialCopilot.Web
+        env:
+          DEMO_E2E: '1'
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test:e2e -- integration.spec.ts

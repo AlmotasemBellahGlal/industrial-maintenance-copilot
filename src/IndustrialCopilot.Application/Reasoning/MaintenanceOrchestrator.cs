@@ -76,7 +76,9 @@ public sealed class MaintenanceOrchestrator
             trace.End(review,workOrder:order.Id,revision:order.Revision);
             trace.End(root);
             await trace.Flush(cancellationToken);
-            return new(MaintenanceReasoningOutcome.Proposed,run.Id,order.Id);
+            // One grounded explanation (AgentJson.Text limits it to 4,000 characters).
+            // Concatenating all symptoms could exceed the bounded SSE frame after JSON escaping.
+            return new(MaintenanceReasoningOutcome.Proposed,run.Id,order.Id,Narrative:match.Match!.MatchedSymptoms[0].Description);
         }
         catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
         {
@@ -126,12 +128,12 @@ public sealed class MaintenanceOrchestrator
             timeout.CancelAfter(limits.AgentTimeout);
             try
             {
-                var result=await operation(new(llm,limits,trace,id),timeout.Token).WaitAsync(timeout.Token);
+                var result=await operation(new(llm,limits,trace,id,request.ResponseCulture),timeout.Token).WaitAsync(timeout.Token);
                 timeout.Token.ThrowIfCancellationRequested();
                 var outcome=getOutcome(result);
                 Emit(MaintenanceProgressKind.AgentCompleted,role);
                 trace.End(id,outcome==AgentOutcome.Success?TraceStepStatus.Completed:TraceStepStatus.Failed,
-                    outcome==AgentOutcome.InsufficientEvidence?"insufficient_evidence":"cannot_proceed");
+                    outcome==AgentOutcome.Success?null:outcome==AgentOutcome.InsufficientEvidence?"insufficient_evidence":"cannot_proceed");
                 await trace.Flush(cancellationToken);
                 return result;
             }

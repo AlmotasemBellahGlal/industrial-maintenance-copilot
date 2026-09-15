@@ -1,13 +1,15 @@
+import { TranslatePipe, LanguageService } from './core/language';
 import { Component, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet, Router, NavigationEnd } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Session } from './core/session';
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [TranslatePipe, RouterOutlet, RouterLink, RouterLinkActive],
   templateUrl: './app.html',
 })
 export class App {
+  readonly language = inject(LanguageService);
   readonly session = inject(Session);
   readonly menu = signal(false);
   readonly links = [

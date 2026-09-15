@@ -1,4 +1,6 @@
+import { TranslatePipe, UiText, phrase } from '../core/language';
 import { Component, inject, signal, viewChild, OnDestroy } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -8,7 +10,7 @@ import { Session } from '../core/session';
 import { Confirm, focusInvalid, guid, requiredText, Status } from '../shared/ui';
 
 @Component({
-  imports: [ReactiveFormsModule, RouterLink, Confirm, Status],
+  imports: [TranslatePipe, ReactiveFormsModule, RouterLink, Confirm, Status],
   templateUrl: './review.html',
 })
 export class ReviewPage implements OnDestroy {
@@ -23,7 +25,7 @@ export class ReviewPage implements OnDestroy {
   evidence = signal<Evidence | null>(null);
   evidenceError = signal('');
   error = signal('');
-  message = signal('');
+  message = signal<UiText>('');
   busy = signal(false);
   editing = signal(false);
   stale = signal(false);
@@ -181,18 +183,32 @@ export class ReviewPage implements OnDestroy {
     this.busy.set(true);
     const detail =
       decision === 'EditAndApprove'
-        ? `Approve the displayed edited scope and authoritative requirements as the final revision after revision ${r.target.revision}. Old safety verifications do not transfer.`
-        : `${decision} work order revision ${r.target.revision}: ${r.content.description}. Approval does not verify safety or dispatch the work order.`;
+        ? phrase(
+            'Approve the displayed edited scope and authoritative requirements as the final revision after revision {0}. Old safety verifications do not transfer.',
+            r.target.revision,
+          )
+        : phrase(
+            decision === 'Approve'
+              ? 'Approve work order revision {0}: {1}. Approval does not verify safety or dispatch the work order.'
+              : 'Reject work order revision {0}: {1}. No dispatch is authorized.',
+            r.target.revision,
+            r.content.description,
+          );
     try {
       if (
         !(await this.confirmation()!.ask(
           decision === 'EditAndApprove'
             ? 'Approve final edited scope?'
-            : `${decision} revision ${r.target.revision}?`,
+            : phrase(
+                decision === 'Approve' ? 'Approve revision {0}?' : 'Reject revision {0}?',
+                r.target.revision,
+              ),
           detail,
           decision === 'EditAndApprove'
             ? 'Confirm edit & approval'
-            : `Confirm ${decision.toLowerCase()}`,
+            : decision === 'Approve'
+              ? 'Confirm approve'
+              : 'Confirm reject',
         )) ||
         generation !== this.generation
       )
@@ -214,7 +230,10 @@ export class ReviewPage implements OnDestroy {
       }
       this.cancelEdit();
       this.message.set(
-        `Server decision: ${result.outcome}. Review the resulting revision and safety state below.`,
+        phrase(
+          'Server decision: {0}. Review the resulting revision and safety state below.',
+          result.outcome,
+        ),
       );
     } catch (e) {
       if (generation === this.generation) {
@@ -235,7 +254,7 @@ export class ReviewPage implements OnDestroy {
       const result = await this.api.submit(r.workOrderId, r.target);
       if (generation !== this.generation) return;
       if (result.review) this.install(result.review);
-      this.message.set(`Review submission: ${result.outcome}`);
+      this.message.set(phrase('Review submission: {0}', result.outcome));
     } catch (e) {
       if (generation === this.generation) {
         this.error.set(failure(e));
@@ -262,7 +281,13 @@ export class ReviewPage implements OnDestroy {
       if (
         !(await this.confirmation()!.ask(
           'Record human safety verification?',
-          `${requirement.description}: record ${v.satisfied ? 'satisfied' : 'not satisfied'} for revision ${r.target.revision}, with the evidence you entered. Only attest to checks actually performed.`,
+          phrase(
+            v.satisfied
+              ? '{0}: record satisfied for revision {1}, with the evidence you entered. Only attest to checks actually performed.'
+              : '{0}: record not satisfied for revision {1}, with the evidence you entered. Only attest to checks actually performed.',
+            requirement.description,
+            r.target.revision,
+          ),
           'Record verification',
         )) ||
         generation !== this.generation
@@ -292,7 +317,11 @@ export class ReviewPage implements OnDestroy {
       if (
         !(await this.confirmation()!.ask(
           'Request external dispatch?',
-          `Request dispatch of revision ${r.target.revision}: ${r.content.description}. This can create an external maintenance ticket. The server must recheck approval and all mandatory safety prerequisites.`,
+          phrase(
+            'Request dispatch of revision {0}: {1}. This can create an external maintenance ticket. The server must recheck approval and all mandatory safety prerequisites.',
+            r.target.revision,
+            r.content.description,
+          ),
           'Request dispatch',
         )) ||
         generation !== this.generation
@@ -309,6 +338,10 @@ export class ReviewPage implements OnDestroy {
       this.install(current);
     } catch (e) {
       if (generation === this.generation) {
+        // A definitive gate rejection created no attempt. Reload remains required;
+        // unknown outcomes and existing delivery attempts remain protected from retry.
+        if (e instanceof HttpErrorResponse && e.status === 422 && e.error?.attemptId === null)
+          this.dispatchRequested.set(false);
         this.error.set(failure(e));
         this.stale.set(true);
       }

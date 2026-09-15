@@ -62,3 +62,7 @@ The dashboard uses labelled session activity, not invented server metrics.
 
 See [architecture](docs/ARCHITECTURE.md), [API/Worker ADR](docs/adr/ADR-006-api-streaming-reconciliation.md)
 and [AI usage log](docs/AI-USAGE-LOG.md).
+
+## Reproducible bilingual demo
+
+See [DEMO-GUIDE](docs/DEMO-GUIDE.md) for the synthetic pump scenario, real PostgreSQL/API/Worker/Angular startup, English/Arabic presentation boundaries, safety and approval smoke tests, and development-only reset instructions. The separate demo executable uses a deterministic LLM test double; live providers are optional.

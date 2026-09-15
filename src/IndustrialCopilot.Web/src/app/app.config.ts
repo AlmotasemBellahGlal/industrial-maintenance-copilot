@@ -3,6 +3,10 @@ import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { hostHeaders } from './core/api';
+import { registerLocaleData } from '@angular/common';
+import arabicLocale from '@angular/common/locales/ar';
+
+registerLocaleData(arabicLocale);
 
 export const appConfig: ApplicationConfig = {
   providers: [

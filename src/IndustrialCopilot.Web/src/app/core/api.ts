@@ -1,3 +1,4 @@
+import { LanguageService } from './language';
 import { inject, Injectable, InjectionToken } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -22,13 +23,15 @@ export const API_BASE = new InjectionToken<string>('API_BASE', {
 });
 export const hostHeaders: HttpInterceptorFn = (request, next) => {
   const base = inject(API_BASE),
-    token = inject(Session).token();
+    token = inject(Session).token(),
+    cultureHeaders = inject(LanguageService).requestHeaders();
   return next(
     request.url.startsWith(base + '/')
       ? request.clone({
           setHeaders: {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             'X-Correlation-ID': crypto.randomUUID(),
+            ...cultureHeaders,
           },
         })
       : request,
@@ -63,13 +66,7 @@ export function errorText(status: number): string {
   }
 }
 export function failure(error: unknown): string {
-  if (error instanceof HttpErrorResponse)
-    return (
-      errorText(error.status) +
-      (error.headers.get('X-Correlation-ID')
-        ? ` Correlation: ${error.headers.get('X-Correlation-ID')}`
-        : '')
-    );
+  if (error instanceof HttpErrorResponse) return errorText(error.status);
   return error instanceof ApiFailure ? error.message : errorText(0);
 }
 @Injectable({ providedIn: 'root' })

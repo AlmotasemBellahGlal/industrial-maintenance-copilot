@@ -248,7 +248,7 @@ nav > a.active {
 }
 .topbar .muted {
   font-size: 11px;
-  margin-left: 12px;
+  margin-inline-start: 12px;
 }
 .connection-pill {
   padding: 8px 12px;
@@ -415,7 +415,7 @@ app-status {
 }
 .notice {
   padding: 16px;
-  border-left: 3px solid #93620f;
+  border-inline-start: 3px solid #93620f;
   background: #fff4de;
   color: #754608;
   margin-bottom: 24px;
@@ -508,8 +508,8 @@ fieldset:disabled {
 .timeline {
   list-style: none;
   padding: 0;
-  border-left: 2px solid var(--line);
-  margin-left: 6px;
+  border-inline-start: 2px solid var(--line);
+  margin-inline-start: 6px;
 }
 .timeline > li {
   padding: 8px 0 20px 20px;
@@ -518,7 +518,7 @@ fieldset:disabled {
 }
 .timeline > li:before {
   position: absolute;
-  left: -5px;
+  inset-inline-start: -5px;
   top: 18px;
   width: 8px;
   height: 8px;
@@ -623,8 +623,8 @@ details {
 }
 blockquote {
   margin: 0;
-  padding-left: 18px;
-  border-left: 3px solid var(--primary);
+  padding-inline-start: 18px;
+  border-inline-start: 3px solid var(--primary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -654,7 +654,7 @@ dialog h2 {
 .skip-link {
   position: absolute;
   top: -100px;
-  left: 16px;
+  inset-inline-start: 16px;
   background: white;
   padding: 12px;
   z-index: 20;
@@ -808,4 +808,39 @@ button:disabled:hover {
   background: #e7ebe8;
   color: #5a655f;
   border-color: #abb7b0;
+}
+
+.language-switch {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.language-switch button[aria-pressed='true'] {
+  border-color: currentColor;
+  font-weight: 700;
+}
+.identifier,
+code,
+.citation h3 {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+dd,
+blockquote {
+  unicode-bidi: plaintext;
+}
+[dir='rtl'] {
+  font-family: Tahoma, Arial, sans-serif;
+}
+.topbar {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+#equipment,
+#manual,
+#manual-revision,
+#lookup {
+  direction: ltr;
+  unicode-bidi: isolate;
 }

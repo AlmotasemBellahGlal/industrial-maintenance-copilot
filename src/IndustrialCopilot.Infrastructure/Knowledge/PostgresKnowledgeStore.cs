@@ -26,7 +26,7 @@ public sealed class PostgresKnowledgeStore(NpgsqlDataSource dataSource, Knowledg
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             await using (var register = new NpgsqlCommand("""
                 INSERT INTO knowledge.profiles(profile,binding,dimensions) VALUES (@profile,@binding,@dimensions)
-                ON CONFLICT (profile) DO NOTHING
+                ON CONFLICT DO NOTHING
                 """, connection, transaction))
             {
                 AddSpace(register);
@@ -36,14 +36,16 @@ public sealed class PostgresKnowledgeStore(NpgsqlDataSource dataSource, Knowledg
             await CheckSpaceAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
             await using (var revision = new NpgsqlCommand("""
                 INSERT INTO knowledge.revisions(document_id,revision_id,profile,dimensions)
-                VALUES (@document,@revision,@profile,@dimensions) ON CONFLICT (document_id,revision_id) DO NOTHING;
+                VALUES (@document,@revision,@profile,@dimensions) ON CONFLICT DO NOTHING;
                 SELECT 1 FROM knowledge.revisions WHERE document_id=@document AND revision_id=@revision FOR UPDATE;
                 """, connection, transaction))
             {
                 AddRevision(revision, request); AddSpace(revision);
                 await revision.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
-            // The stable revision row serializes concurrent replacements, including an initial insert.
+            // Both tables have secondary unique constraints used by foreign keys. During concurrent
+            // first inserts, arbitrate all unique conflicts before taking the stable revision lock.
+            // Profile compatibility is still checked independently above.
             await using (var replace = new NpgsqlCommand("""
                 DELETE FROM knowledge.chunks WHERE document_id=@document AND revision_id=@revision;
                 UPDATE knowledge.revisions SET profile=@profile,dimensions=@dimensions WHERE document_id=@document AND revision_id=@revision;

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?><root>
+<data name="InvalidRequest" xml:space="preserve"><value>طلب غير صالح</value></data>
+<data name="InvalidRequestDetail" xml:space="preserve"><value>تحقق من الحقول المطلوبة والمعرّفات.</value></data>
+<data name="Unauthenticated" xml:space="preserve"><value>يلزم تسجيل الدخول</value></data>
+<data name="UnauthenticatedDetail" xml:space="preserve"><value>أدخل بيانات اعتماد صالحة للمضيف.</value></data>
+<data name="Forbidden" xml:space="preserve"><value>الإذن مرفوض</value></data>
+<data name="ForbiddenDetail" xml:space="preserve"><value>لا يملك حسابك صلاحية تنفيذ هذه العملية لهذه المعدة.</value></data>
+<data name="NotFound" xml:space="preserve"><value>السجل غير متاح</value></data>
+<data name="NotFoundDetail" xml:space="preserve"><value>تحقق من المعرّف وصلاحيات الوصول.</value></data>
+<data name="Conflict" xml:space="preserve"><value>تعارض في المراجعة</value></data>
+<data name="ConflictDetail" xml:space="preserve"><value>أعد تحميل السجل الحالي وراجع نطاق العمل الدقيق مجددًا.</value></data>
+<data name="NotAccepted" xml:space="preserve"><value>لم تُقبل العملية</value></data>
+<data name="NotAcceptedDetail" xml:space="preserve"><value>راجع حالة سير العمل ومتطلبات السلامة المعتمدة.</value></data>
+<data name="Timeout" xml:space="preserve"><value>انتهت مهلة العملية</value></data>
+<data name="TimeoutDetail" xml:space="preserve"><value>افحص السجل الحالي قبل إعادة المحاولة.</value></data>
+<data name="Unavailable" xml:space="preserve"><value>الخدمة غير متاحة</value></data>
+<data name="UnavailableDetail" xml:space="preserve"><value>قد تكون النتيجة غير معروفة. افحص السجل قبل إعادة محاولة عملية لها آثار فعلية.</value></data>
+</root>

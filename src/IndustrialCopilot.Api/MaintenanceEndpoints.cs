@@ -27,7 +27,7 @@ public static class MaintenanceEndpoints
         {
             var input=await Prepare(request,c); var result=await Service<MaintenanceOrchestrator>(c).ExecuteAsync(input,c.RequestAborted);
             c.Response.Headers.Location="/api/runs/"+result.RunId;
-            return Results.Json(new WorkflowResponse(result.RunId,result.WorkOrderId,input.ExecutionId,input.CorrelationId,result.Outcome.ToString()),statusCode:result.Outcome switch{MaintenanceReasoningOutcome.Proposed=>201,MaintenanceReasoningOutcome.Conflict=>409,MaintenanceReasoningOutcome.TimedOut=>504,MaintenanceReasoningOutcome.Failed=>503,_=>422});
+            return Results.Json(new WorkflowResponse(result.RunId,result.WorkOrderId,input.ExecutionId,input.CorrelationId,result.Outcome.ToString(),result.Narrative),statusCode:result.Outcome switch{MaintenanceReasoningOutcome.Proposed=>201,MaintenanceReasoningOutcome.Conflict=>409,MaintenanceReasoningOutcome.TimedOut=>504,MaintenanceReasoningOutcome.Failed=>503,_=>422});
         });
         routes.MapPost("/runs/stream",Stream).Produces(200,contentType:"text/event-stream");
         routes.MapGet("/runs/{id:guid}",async(Guid id,HttpContext c)=>
@@ -94,7 +94,7 @@ public static class MaintenanceEndpoints
         var equipment=await Service<IEquipmentContextStore>(c).GetAsync(request.EquipmentId,c.RequestAborted)??throw new ApiProblemException(404,"equipment_not_found");
         var candidates=Service<IReadOnlyList<ApprovedMaintenanceProcedure>>(c).Where(p=>p.Candidate.EquipmentId==request.EquipmentId && equipment.Manuals.Any(m=>m.ManualId==p.Candidate.DocumentId && m.ManualRevisionId==p.Candidate.ManualRevisionId)).Select(p=>p.Candidate).ToArray();
         if(candidates.Length is <1 or >8)throw new ApiProblemException(422,"procedure_coverage_missing");
-        return new(Guid.NewGuid(),(Guid)c.Items["correlation"]!,Guid.NewGuid(),Guid.NewGuid(),new(request.Symptom,candidates,[]));
+        return new(Guid.NewGuid(),(Guid)c.Items["correlation"]!,Guid.NewGuid(),Guid.NewGuid(),new(request.Symptom,candidates,[]),System.Globalization.CultureInfo.CurrentUICulture.Name);
     }
     private sealed class ProgressWriter(ChannelWriter<MaintenanceProgress> writer,CancellationTokenSource lifetime) : IProgress<MaintenanceProgress>
     {public void Report(MaintenanceProgress value){if(!writer.TryWrite(value))lifetime.Cancel();}}
@@ -117,7 +117,7 @@ public static class MaintenanceEndpoints
         {
             await foreach(var progress in channel.Reader.ReadAllAsync(c.RequestAborted))
                 await Write(progress.Kind.ToString(),new {input.CorrelationId,input.ExecutionId,progress});
-            if(result is not null)await Write("Result",new WorkflowResponse(result.RunId,result.WorkOrderId,input.ExecutionId,input.CorrelationId,result.Outcome.ToString()));
+            if(result is not null)await Write("Result",new WorkflowResponse(result.RunId,result.WorkOrderId,input.ExecutionId,input.CorrelationId,result.Outcome.ToString(),result.Narrative));
         }
         finally{lifetime.Cancel();await producer;}
         async Task Write(string kind,object value)

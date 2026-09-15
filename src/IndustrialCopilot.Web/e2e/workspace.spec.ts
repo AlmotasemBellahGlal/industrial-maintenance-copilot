@@ -344,6 +344,22 @@ for (const width of [375, 768, 1024, 1440])
       .analyze();
     expect(results.violations).toEqual([]);
     await page.screenshot({ path: `test-results/review-${width}.png`, fullPage: true });
+    await page.getByRole('button', { name: 'العربية', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+    await expect(
+      page.getByRole('heading', { name: 'مراجعة أمر العمل', exact: true }),
+    ).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    await page.screenshot({ path: `test-results/review-ar-${width}.png`, fullPage: true });
   });
 
 for (const state of ['Pending', 'Confirmed', 'DefinitivelyFailed']) {
@@ -369,6 +385,22 @@ for (const state of ['Pending', 'Confirmed', 'DefinitivelyFailed']) {
     expect(posts).toBe(0);
   });
 }
+
+test('Arabic approval dialog keeps keyboard cancellation and source scope intact', async ({
+  page,
+}) => {
+  await backend(page);
+  await page.goto('/work-orders/' + orderId);
+  await page.getByRole('button', { name: 'العربية', exact: true }).click();
+  const approve = page.getByRole('button', { name: /^الموافقة على الإصدار/ });
+  await approve.click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('Inspect pump bearing');
+  await expect(page.getByRole('button', { name: 'رجوع', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(approve).toBeFocused();
+});
 test('run inspection links to work orders and safe execution traces', async ({ page }) => {
   await backend(page);
   await page.goto('/runs');
