@@ -1003,3 +1003,7 @@ Infrastructure
 ```
 
 The exact technologies and concrete implementations are selected independently from the core Application and Domain layers.
+
+### FR-1 staged ingestion (Issue #29)
+
+Application composes Extract -> Clean -> Chunk -> Embed -> Index. Infrastructure implements strict UTF-8 and selectable-text PDF extraction, conservative cleaning and shared deterministic windows. Typed source metadata is additive; citations retain exact revision/page or text-line provenance. Knowledge migration 002 stores metadata and independent ingestion attempts. Completion commits atomically with replacement; ended processing sessions read as Interrupted. This operator workflow does not reuse ReasoningJob or grant safety authority. See [ADR-009](adr/ADR-009-staged-ingestion-and-attempt-reporting.md) and [corpus setup](CORPUS-INGESTION.md).

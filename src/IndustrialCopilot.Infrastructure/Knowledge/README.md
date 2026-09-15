@@ -55,3 +55,7 @@ PostgreSQL/pgvector server with permission to create databases. Each test class
 creates and drops only its own generated database. CI provisions a disposable
 pgvector container. Without this variable, storage tests are explicitly skipped;
 all other tests run offline. Production connections must never be used for tests.
+
+## FR-1 update
+
+The host now composes `DocumentPipeline` with UTF-8/PDF extractors, conservative cleaning and shared deterministic chunking. `TextDocumentProcessor` remains text-only for compatibility. Migration 002 adds provenance and attempt reporting; atomic replacement also completes the associated attempt. Current formats, limits and commands: [CORPUS-INGESTION](../../../docs/CORPUS-INGESTION.md). Text-only statements above describe the original slice.

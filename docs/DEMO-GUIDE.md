@@ -205,3 +205,7 @@ the legacy request-owned SSE endpoint; use `/api/jobs` for durable semantics.
 - GitHub Actions runs the full .NET suite, the live T7 proof, legacy bilingual HTTP
   smoke and browser integration. The `t7-live-proof` artifact records completed
   process-recovery assertions. CI success is required before final delivery.
+
+## Additional FR-1 corpus proof
+
+The original bilingual pump/approval demo remains unchanged. The separate [synthetic assessment corpus](CORPUS-INGESTION.md) contains 31 documents and 150 actual PDF pages, ingested through the production stage/index pipeline with deterministic test embeddings. Run its `--ingest` twice and `--status` to demonstrate repeatability, Completed status and keyword/dense/hybrid citations. This does not expand the trusted safety-procedure catalog or imply full-stack Compose deployment.
