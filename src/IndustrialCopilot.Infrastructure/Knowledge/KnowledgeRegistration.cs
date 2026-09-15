@@ -31,7 +31,7 @@ public static class KnowledgeRegistration
         {
             var space = new EmbeddingSpace(profile, model, Number(section, "Dimensions"));
             var options = new KnowledgeStoreOptions(space, binding, Number(section, "HybridCandidates", 100));
-            var processor = new TextDocumentProcessor(Number(section, "ChunkSize", 1200), Number(section, "Overlap", 200));
+            var processor = new DocumentPipeline(new ManualDocumentExtractor(), new DocumentCleaner(), new DeterministicDocumentChunker(Number(section, "ChunkSize", 1200), Number(section, "Overlap", 200)));
             var connection = new NpgsqlConnectionStringBuilder(Required(configuration.GetSection("ConnectionStrings"), "Knowledge")) { IncludeErrorDetail = false };
             if (string.IsNullOrWhiteSpace(connection.Host) || string.IsNullOrWhiteSpace(connection.Database)) throw new ArgumentException();
             services.AddSingleton(space);
@@ -42,6 +42,7 @@ public static class KnowledgeRegistration
             services.AddSingleton<PostgresKnowledgeStore>();
             services.AddSingleton<IKnowledgeIndex>(p => p.GetRequiredService<PostgresKnowledgeStore>());
             services.AddSingleton<IRetrievalService>(p => p.GetRequiredService<PostgresKnowledgeStore>());
+            services.AddSingleton<IIngestionReports>(_ => new PostgresIngestionReports(connection.ConnectionString));
             services.AddSingleton<ManualIngestionService>();
             return services;
         }

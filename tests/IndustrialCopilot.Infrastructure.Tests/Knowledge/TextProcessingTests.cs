@@ -60,9 +60,9 @@ public class TextProcessingTests
         var processor = new TextDocumentProcessor(2, 0, 4);
         using var source = new MemoryStream([255]);
         await Assert.ThrowsAsync<NotSupportedException>(() => processor.ProcessAsync(new(Request.DocumentId, Request.ManualRevisionId, "application/pdf"), source, default));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => processor.ProcessAsync(Request, source, default));
+        await Assert.ThrowsAsync<IndustrialCopilot.Application.Abstractions.Documents.DocumentInputException>(() => processor.ProcessAsync(Request, source, default));
         using var oversized = new MemoryStream(Encoding.UTF8.GetBytes("abcdef"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => processor.ProcessAsync(Request, oversized, default));
+        await Assert.ThrowsAsync<IndustrialCopilot.Application.Abstractions.Documents.DocumentInputException>(() => processor.ProcessAsync(Request, oversized, default));
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => processor.ProcessAsync(Request, oversized, cancelled.Token));
         Assert.Throws<ArgumentException>(() => new TextDocumentProcessor(10, 10));

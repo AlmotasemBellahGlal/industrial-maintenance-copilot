@@ -67,3 +67,7 @@ and [AI usage log](docs/AI-USAGE-LOG.md).
 ## Reproducible bilingual demo
 
 See [DEMO-GUIDE](docs/DEMO-GUIDE.md) for the synthetic pump scenario, real PostgreSQL/API/Worker/Angular startup, English/Arabic presentation boundaries, safety and approval smoke tests, and development-only reset instructions. The separate demo executable uses a deterministic LLM test double; live providers are optional.
+
+## Assessment corpus and ingestion
+
+See [CORPUS-INGESTION](docs/CORPUS-INGESTION.md) for the synthetic 31-document / 150-page corpus, UTF-8 and PDF pipeline, durable status, deterministic ingestion/retrieval smoke and operator commands.

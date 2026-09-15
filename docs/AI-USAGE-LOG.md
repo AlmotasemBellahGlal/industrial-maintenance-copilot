@@ -121,3 +121,11 @@ uses the existing real PostgreSQL/pgvector GitHub Actions service, retaining the
 safe proof artifact. Documentation range punctuation damaged by shell encoding was
 corrected. The PR must pass CI, including the live-observer/restart smoke, before
 delivery is reported complete.
+
+## Issue #29 - FR-1 corpus and ingestion
+
+AI assisted inspection, additive stage contracts, PDF extraction, per-attempt PostgreSQL reporting, synthetic corpus generation, tests and documentation. The corpus is explicitly fictional and not manufacturer guidance. No personal/proprietary data, paid provider call or model download was used. Requested scope excluded evaluation, broad security changes, teaching material and token streaming.
+
+Self-review found that Npgsql redacts connection-string credentials: the dedicated liveness session must use injected host configuration. Fixed before delivery. Reports now support synchronous and asynchronous container disposal. Section-heading detection was moved outside the chunk loop to avoid rescanning a large source per window; PDF identity/locator numbers explicitly use invariant culture. Existing text identities/line endings were preserved; registration assertions were updated to the shared pipeline. Live PostgreSQL tests cover concurrent duplicates, transactional completion, rollback and backend termination. A generated PDF sample was rendered and checked visually. Final totals and CI evidence are reported in the PR. Existing Microsoft.OpenApi NU1903 remains out of scope.
+
+Final failure-category review restricted UnsupportedFormat to extraction input rejection. Unsupported provider operations remain StageFailed at the recorded Embedding stage; a focused regression covers this distinction.

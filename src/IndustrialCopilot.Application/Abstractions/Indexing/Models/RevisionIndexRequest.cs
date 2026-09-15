@@ -2,6 +2,7 @@ namespace IndustrialCopilot.Application.Abstractions.Indexing.Models;
 
 public sealed record RevisionIndexRequest
 {
+    public Guid? IngestionAttemptId { get; }
     public Guid DocumentId { get; }
     public Guid ManualRevisionId { get; }
     // Application/configuration-owned embedding-space identifier, not a provider model name.
@@ -9,7 +10,7 @@ public sealed record RevisionIndexRequest
     public IReadOnlyList<IndexedChunk> Chunks { get; }
 
     public RevisionIndexRequest(Guid documentId, Guid manualRevisionId, string embeddingProfile,
-        IReadOnlyList<IndexedChunk> chunks)
+        IReadOnlyList<IndexedChunk> chunks, Guid? ingestionAttemptId = null)
     {
         if (documentId == Guid.Empty) throw new ArgumentException("Document identity is required.", nameof(documentId));
         if (manualRevisionId == Guid.Empty) throw new ArgumentException("Revision identity is required.", nameof(manualRevisionId));
@@ -24,6 +25,8 @@ public sealed record RevisionIndexRequest
             throw new ArgumentException("Chunks must belong to the requested document revision.", nameof(chunks));
         if (snapshot.Any(chunk => chunk.Vector.Count != snapshot[0].Vector.Count))
             throw new ArgumentException("Vector dimensions must be consistent.", nameof(chunks));
+        if (ingestionAttemptId == Guid.Empty) throw new ArgumentException("Invalid attempt identity.");
+        IngestionAttemptId = ingestionAttemptId;
         DocumentId = documentId;
         ManualRevisionId = manualRevisionId;
         EmbeddingProfile = embeddingProfile;

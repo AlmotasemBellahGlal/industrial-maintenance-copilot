@@ -263,3 +263,7 @@ Job Succeeded means review publication, while MaintenanceRun is WaitingForApprov
 Separate human decisions, trusted verification and dispatch remain mandatory.
 Attempts retain independent execution IDs/traces under one correlation/job/run;
 a crashed attempt's trace may be incomplete and its usage must not be invented.
+
+### Text/PDF ingestion and status
+
+The existing `--ingest` command now accepts `.txt` and `.pdf`. Supply optional `--ingest-metadata <title> <source-label> <positive-revision-number>` for new sources. Inspect `--ingestion-status <manual-guid> <revision-guid>` for durable attempt states and safe failure categories. The configured manual/revision allowlist still applies. Run knowledge migrations before ingestion. Full limits, synthetic corpus commands and interruption semantics: [CORPUS-INGESTION](CORPUS-INGESTION.md).

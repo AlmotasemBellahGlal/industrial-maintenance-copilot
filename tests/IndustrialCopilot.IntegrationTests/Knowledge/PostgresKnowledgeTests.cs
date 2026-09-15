@@ -23,6 +23,7 @@ public sealed class KnowledgeDatabase : IAsyncLifetime
     private readonly string database = "rag_test_" + Guid.NewGuid().ToString("N");
     private NpgsqlDataSource? admin;
     public NpgsqlDataSource Source { get; private set; } = null!;
+    public string ConnectionString { get; private set; } = null!;
     public async Task InitializeAsync()
     {
         var connection = Environment.GetEnvironmentVariable("RAG_TEST_POSTGRES");
@@ -31,7 +32,8 @@ public sealed class KnowledgeDatabase : IAsyncLifetime
         // The identifier is generated here, never supplied by configuration/test input.
         await using var create = admin.CreateCommand($"CREATE DATABASE {database}");
         await create.ExecuteNonQueryAsync();
-        Source = NpgsqlDataSource.Create(new NpgsqlConnectionStringBuilder(connection) { Database = database, IncludeErrorDetail = false }.ConnectionString);
+        ConnectionString = new NpgsqlConnectionStringBuilder(connection) { Database = database, IncludeErrorDetail = false }.ConnectionString;
+        Source = NpgsqlDataSource.Create(ConnectionString);
         await new KnowledgeSchema(Source).ApplyAsync(default);
         await new KnowledgeSchema(Source).ApplyAsync(default); // migration is idempotent
     }

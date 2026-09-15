@@ -8,8 +8,11 @@ public sealed record DocumentChunk
     public Guid ChunkId { get; }
     public string Locator { get; }
     public string Content { get; }
+    public DocumentMetadata? Metadata { get; }
+    public int? Page { get; }
+    public string? Section { get; }
 
-    public DocumentChunk(Guid documentId, Guid manualRevisionId, Guid chunkId, string locator, string content)
+    public DocumentChunk(Guid documentId, Guid manualRevisionId, Guid chunkId, string locator, string content, DocumentMetadata? metadata = null, int? page = null, string? section = null)
     {
         if (documentId == Guid.Empty) throw new ArgumentException("Document identity is required.", nameof(documentId));
         if (manualRevisionId == Guid.Empty) throw new ArgumentException("Revision identity is required.", nameof(manualRevisionId));
@@ -20,6 +23,9 @@ public sealed record DocumentChunk
         ManualRevisionId = manualRevisionId;
         ChunkId = chunkId;
         Locator = locator;
+        if (section is not null) ArgumentException.ThrowIfNullOrWhiteSpace(section);
+        if (page is <= 0) throw new ArgumentOutOfRangeException(nameof(page));
         Content = content;
+        Metadata = metadata; Page = page; Section = section;
     }
 }
