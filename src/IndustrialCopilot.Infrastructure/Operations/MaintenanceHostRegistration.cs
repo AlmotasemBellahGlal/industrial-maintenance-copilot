@@ -1,3 +1,5 @@
+using IndustrialCopilot.Application.Abstractions.Jobs;
+using IndustrialCopilot.Application.Jobs;
 using System.Text.Json;
 using IndustrialCopilot.Application.Abstractions.Actions;
 using IndustrialCopilot.Application.Abstractions.Approval;
@@ -44,13 +46,25 @@ public static class MaintenanceHostRegistration
         if(config["Dispatch:Adapter"]!="PostgresInbox") throw new InvalidOperationException("An explicit supported dispatch adapter is required.");
         services.AddKeyedSingleton<NpgsqlDataSource>("operations",(_,_)=>NpgsqlDataSource.Create(operations));
         services.AddKeyedSingleton<NpgsqlDataSource>("receiver",(_,_)=>NpgsqlDataSource.Create(receiver));
-        services.AddSingleton<PostgresWorkflowStore>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        HostIdentity? JobIdentity(string actor,Guid equipment)
+        {
+            var entry=config.GetSection("Authentication:Credentials").GetChildren().SingleOrDefault(e=>e["Actor"]==actor);
+            if(entry is null) return null;
+            var permissions=(entry["Permissions"]??"").Split(',',StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+            var ids=(entry["EquipmentIds"]??"").Split(',',StringSplitOptions.RemoveEmptyEntries).Select(s=>Guid.TryParse(s,out var id)?id:Guid.Empty).ToHashSet();
+            return permissions.Contains("read") && permissions.Contains("start") && ids.Contains(equipment)
+                ?new(actor,new HashSet<string>{"read","start"},new HashSet<Guid>{equipment}):null;
+        }
+        services.AddSingleton(new ReasoningJobExecutionScope((actor,equipment)=>JobIdentity(actor,equipment) is not null));
+        services.AddSingleton<IReasoningJobExecutionScope>(p=>p.GetRequiredService<ReasoningJobExecutionScope>());
+        services.AddSingleton<IReasoningJobStore>(p=>new PostgresReasoningJobStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        services.AddSingleton<PostgresWorkflowStore>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),p.GetRequiredService<ReasoningJobExecutionScope>()));
         services.AddSingleton<IWorkflowStore>(p=>p.GetRequiredService<PostgresWorkflowStore>());
-        services.AddSingleton<HostAccess>(p=>new(identity,p.GetRequiredService<PostgresWorkflowStore>(),p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),safety,procedures));
+        services.AddSingleton<HostAccess>(p=>new(()=>p.GetRequiredService<ReasoningJobExecutionScope>().Current is {} job?JobIdentity(job.ActorId,job.Request.Input.Candidates[0].EquipmentId):identity(),p.GetRequiredService<PostgresWorkflowStore>(),p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),safety,procedures));
         services.AddSingleton<IActionAuthorization>(p=>p.GetRequiredService<HostAccess>());
         services.AddSingleton<ITrustedToolContextAccessor>(p=>p.GetRequiredService<HostAccess>());
         services.AddSingleton<OperationalAccessPolicy>(p=>p.GetRequiredService<HostAccess>());
-        services.AddSingleton<IRunTraceStore>(p=>new PostgresRunTraceStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),p.GetRequiredService<HostAccess>()));
+        services.AddSingleton<IRunTraceStore>(p=>new PostgresRunTraceStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),p.GetRequiredService<HostAccess>(),p.GetRequiredService<ReasoningJobExecutionScope>()));
         services.AddSingleton<IWorkOrderApprovalService>(p=>new AuthorizedApprovalService(new PostgresWorkOrderApprovalService(p.GetRequiredService<PostgresWorkflowStore>(),p.GetRequiredService<HostAccess>(),TimeProvider.System),p.GetRequiredService<IActionAuthorization>()));
         services.AddSingleton<PostgresTrustedContext>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),p.GetRequiredService<IActionAuthorization>()));
         services.AddSingleton<IEquipmentContextStore>(p=>p.GetRequiredService<PostgresTrustedContext>());
@@ -66,7 +80,7 @@ public static class MaintenanceHostRegistration
         {
             services.AddLlmProviders(config); services.AddKnowledgePipeline(config);
             services.AddSingleton<TrustedToolExecutor>(p=>new(p.GetRequiredService<PostgresKnowledgeStore>(),p.GetRequiredService<IEquipmentContextStore>(),safety,p.GetRequiredService<DispatchCoordinator>(),p.GetRequiredService<IActionAuthorization>(),p.GetRequiredService<IRunTraceStore>()));
-            services.AddSingleton<IRetrievalService,TrustedRetrievalService>(); services.AddSingleton<MaintenanceOrchestrator>();
+            services.AddSingleton<IRetrievalService,TrustedRetrievalService>(); services.AddSingleton<MaintenanceOrchestrator>(); services.AddSingleton<ReasoningJobProcessor>();
         }
         return services;
     }

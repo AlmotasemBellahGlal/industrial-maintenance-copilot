@@ -18,7 +18,7 @@ namespace IndustrialCopilot.IntegrationTests.Reasoning;
 
 public class PipelinePersistenceTests(KnowledgeDatabase database) : IClassFixture<KnowledgeDatabase>
 {
-    private sealed class ScriptedProvider : ILlmProvider
+    internal sealed class ScriptedProvider : ILlmProvider
     {
         private int call;
         public Task<ToolCompletionResponse> CompleteWithToolsAsync(CompletionRequest request,IReadOnlyList<ToolDefinition> tools,CancellationToken token)

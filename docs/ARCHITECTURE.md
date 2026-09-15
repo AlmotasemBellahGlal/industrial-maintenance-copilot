@@ -6,7 +6,7 @@ The diagrams are maintained as source in the repository so that architectural ch
 
 ---
 
-## Current implemented runtime (Issues #21 / #23 / #25)
+## Current implemented runtime (Issues #21 / #23 / #25 / #27)
 
 English/Arabic presentation uses standard API request localization and an explicit
 Application narrative culture. Domain scope, safety policy, authorization and source
@@ -24,7 +24,10 @@ verifications, approval provenance, dispatch reservations and separate traces.
 ```mermaid
 flowchart LR
     Client[Angular client — untrusted] -->|Authenticated REST / SSE| API[API trusted host]
-    API --> Orch[Application orchestrator]
+    API -->|202 submission| Jobs[(PostgreSQL reasoning jobs)]
+    Jobs -->|Lease and fenced replay| Reasoning[Reasoning Worker]
+    Reasoning --> Orch[Application orchestrator]
+    Jobs -->|Durable progress observer| API
     Orch --> Agents[Three specialized agents]
     Agents --> RAG[Scoped RAG / trusted retrieval]
     Orch --> Safety[Deterministic safety policy]
@@ -40,12 +43,15 @@ flowchart LR
     Worker -->|Same-key reconciliation| External
 ```
 
-Current API reasoning is request-owned, with bounded SSE and disconnect
-cancellation. Durable publication stops at WaitingForApproval. The separate
-Worker handles dispatch reconciliation only, using persisted eligibility and
-existing attempt locks; it does not resume interrupted agent pipelines. No durable
-orchestration queue is implemented yet. The Angular client is a separate standalone
-application under `src/IndustrialCopilot.Web`; it never references Domain assemblies.
+The durable `/api/jobs` path persists a Queued run and job before returning 202.
+A separate hosted service claims bounded PostgreSQL leases and invokes the same
+orchestrator. Progress is durable and GET SSE observes it without owning execution.
+After a crash, a new attempt replays before atomic review publication; publication
+already committed is recognized without generating a second order. No lease is
+held during human approval. See [ADR-008](adr/ADR-008-durable-async-reasoning-jobs.md).
+The original `/api/runs` and `/api/runs/stream` remain request-owned compatibility
+paths used by the unchanged Angular diagnosis page. The durable API has a separate
+deterministic smoke harness; this slice does not add a new UI job dashboard.
 
 The client has lazy routes, typed API adapters, Reactive Forms and local signals.
 REST DTOs follow camelCase HTTP contracts; bounded fetch-based SSE explicitly

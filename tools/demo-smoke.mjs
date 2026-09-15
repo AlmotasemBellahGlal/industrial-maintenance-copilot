@@ -16,7 +16,16 @@ for(const culture of ['en-US','ar-EG']) {
   assert.equal(unauthorized.status,401);assert.equal(unauthorized.body.error,'unauthenticated');
   assert.equal(/[\u0600-\u06ff]/.test(unauthorized.body.title),culture==='ar-EG');
   for(const decision of ['Approve','Reject','EditAndApprove']) {
-    const run=await call('/runs',{equipmentId:'11111111-1111-1111-1111-111111111111',symptom:'pump vibration'},culture);
+    let run;
+    if(process.argv.includes('--jobs')) {
+      const response=await fetch(base+'/jobs',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential}`,'Accept-Language':culture,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({equipmentId:'11111111-1111-1111-1111-111111111111',symptom:'pump vibration'})});
+      assert.equal(response.status,202);let job=await response.json();
+      for(let poll=0;poll<60 && !['Succeeded','Failed','Cancelled'].includes(job.status);poll++) {
+        await new Promise(resolve=>setTimeout(resolve,500));job=(await call(`/jobs/${job.jobId}`)).body;
+      }
+      assert.equal(job.status,'Succeeded');
+      run={status:201,body:{...job.result,executionId:job.attempts.at(-1).executionId,correlationId:job.correlationId}};
+    } else run=await call('/runs',{equipmentId:'11111111-1111-1111-1111-111111111111',symptom:'pump vibration'},culture);
     assert.equal(run.status,201);assert.equal(run.body.outcome,'Proposed');
     assert.equal(/[\u0600-\u06ff]/.test(run.body.narrative),culture==='ar-EG');
     const path=`/work-orders/${run.body.workOrderId}`;

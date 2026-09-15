@@ -15,6 +15,23 @@ var connection=Environment.GetEnvironmentVariable("DEMO_POSTGRES")??throw new In
 var parsed=new Npgsql.NpgsqlConnectionStringBuilder(connection);
 if(parsed.Host is not ("127.0.0.1" or "localhost") || parsed.Database!="maintenance_demo")
     throw new InvalidOperationException("Demo requires a loopback maintenance_demo database.");
+if(args.Contains("--worker"))
+{
+    // Same production hosted services; only this opt-in executable substitutes the deterministic model.
+    var builder=Host.CreateApplicationBuilder();
+    builder.Configuration.AddJsonFile(Path.Combine(root,"artifacts/issue25/host.json"),false,false);
+    var ids=(builder.Configuration["Worker:EquipmentIds"]??"").Split(',').Select(Guid.Parse).ToHashSet();
+    var identity=new HostIdentity("reconciliation-worker",new HashSet<string>{"dispatch"},ids);
+    builder.Services.AddMaintenanceHost(builder.Configuration,()=>identity,true);
+    var delay=int.TryParse(Environment.GetEnvironmentVariable("DEMO_MODEL_DELAY_MS"),out var configuredDelay)?configuredDelay:0;
+    if(delay is <0 or >30000)throw new ArgumentException("Invalid test-only model delay.");
+    builder.Services.Replace(ServiceDescriptor.Singleton<ILlmProvider>(new DemoProvider(delay)));
+    builder.Services.AddSingleton(new IndustrialCopilot.Worker.ReconciliationSchedule(intervalSeconds:5));
+    builder.Services.AddSingleton(new IndustrialCopilot.Worker.ReasoningSchedule(ids,leaseSeconds:8));
+    builder.Services.AddHostedService<IndustrialCopilot.Worker.Worker>();
+    builder.Services.AddHostedService<IndustrialCopilot.Worker.ReasoningWorker>();
+    using var host=builder.Build();await host.RunAsync();return;
+}
 var token=Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 var equipment="11111111-1111-1111-1111-111111111111";
 var config=new Dictionary<string,string?>

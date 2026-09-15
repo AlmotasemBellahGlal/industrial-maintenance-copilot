@@ -86,3 +86,38 @@ Presentation decisions: standard Accept-Language cultures; resource-backed safe 
 Corrections during validation: repaired Arabic literals damaged by a Windows PowerShell encoding boundary; fixed a successful-agent trace incorrectly carrying cannot_proceed; fixed concurrent initial index inserts colliding on secondary unique constraints; named duplicate accessibility landmarks; allowed a new dispatch request after reload only when the server definitively rejected the gate without creating an attempt. Unknown delivery outcomes retain retry protection. Test fixtures use bounded scheduling to avoid overwhelming local Docker storage.
 
 Validation uses actual PostgreSQL/pgvector migrations and ingestion, six bilingual HTTP workflows, browser journeys, safety and approval failures, and durable receiver/Worker reconciliation. Detailed commands and limitations are in DEMO-GUIDE.md. No live OpenAI, Ollama, or external ERP was used. Existing Microsoft.OpenApi NU1903 was deliberately left outside this issue. Final test totals are recorded in the PR after the final validation pass.
+
+## 2026-09-15 - Issue #27 T7 durable reasoning jobs
+
+Codex implemented the human-approved T7-only scope on a separate feature branch:
+PostgreSQL queue/leases/events, idempotent 202 submissions, authorized inspection
+and cancellation, a separate reasoning hosted service using the existing pipeline,
+and transactional fencing of run/order/trace writes. No dispatch authority was
+added to reasoning agents. ADR-008 explains coarse safe replay and incomplete
+interrupted-attempt accounting rather than claiming exact agent continuation.
+
+Validation includes real PostgreSQL concurrent submission/claim/fencing tests,
+HTTP submission without any registered orchestrator, hosted Worker shutdown,
+provider cancellation propagation, and a deterministic separate-process kill/restart
+harness. The harness runs six bilingual approval/safety/dispatch journeys through
+jobs and records safe local proof. It uses an explicit test-only model delay for
+crash timing; production providers have no such behavior. No live model quality,
+real physical safety verification, ERP integration or monetary costs are claimed.
+
+Corrections: test lease expiry originally violated the queued-row lease constraint;
+idempotency test fixtures reused keys across unrelated equipment; the smoke script
+used a nonexistent target work-order ID field. Corrected these tests without
+weakening constraints. Self-review also made recovered/cancelled results explicitly
+report incomplete trace status and preserved Blocked versus technical failure on
+recovery. Fixed a PowerShell encoding boundary in the new Arabic documentation.
+The old Microsoft.OpenApi NU1903 warning remains outside scope. Final validation
+totals and CI are recorded in the PR; the existing Angular diagnosis path remains
+request-owned, with the new durable API/harness explicitly documented separately.
+
+Delivery continuation preserved all uncommitted work. Local Docker Desktop could
+not initialize its `dockerInference` socket after disk space was recovered. No
+pagefile, Docker storage or cache configuration was changed. Final live validation
+uses the existing real PostgreSQL/pgvector GitHub Actions service, retaining the
+safe proof artifact. Documentation range punctuation damaged by shell encoding was
+corrected. The PR must pass CI, including the live-observer/restart smoke, before
+delivery is reported complete.
