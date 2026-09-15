@@ -30,9 +30,10 @@ durable work orders and traces, deterministic safety, human approval, four trust
 tools, idempotent dispatch reservations, REST/SSE API, reconciliation Worker and
 an Angular operations workspace for diagnosis, review, safety and dispatch.
 
-The API owns active reasoning requests; the Worker recovers unresolved dispatch
-attempts. Generic durable scheduling/resumption of reasoning remains future
-work. The demonstration dispatch adapter queues durable tickets, not ERP
+T7 durable jobs use PostgreSQL submission, leases, progress events and safe replay
+through the existing orchestrator. The Worker processes reasoning and separately
+reconciles unresolved dispatch attempts. See [ADR-008](docs/adr/ADR-008-durable-async-reasoning-jobs.md).
+Legacy request-owned endpoints remain compatible; `/api/jobs` is the durable path. The demonstration dispatch adapter queues durable tickets, not ERP
 work or physical execution.
 
 ## Build and run

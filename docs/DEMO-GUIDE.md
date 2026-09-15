@@ -30,8 +30,9 @@ The host listens at `http://127.0.0.1:5000`. It writes a randomly generated sess
 In another terminal:
 
 ```powershell
-$env:MAINTENANCE_CONFIG=(Resolve-Path artifacts/issue25/host.json).Path
-dotnet run --project src/IndustrialCopilot.Worker
+$env:ASPNETCORE_ENVIRONMENT='Development'
+$env:DEMO_POSTGRES='Host=127.0.0.1;Port=15432;Database=maintenance_demo;Username=demo;Password=issue25-local-only'
+dotnet run --no-build --project tools/IndustrialCopilot.Demo -- --demo --worker
 ```
 
 In another terminal:
@@ -147,3 +148,60 @@ Never run a broad `docker system prune` or delete unrelated databases. Integrati
 - SSE disconnect: inspect the known run. Cancellation intent is not proof execution stopped.
 - Disk exhaustion: stop safely; do not delete system/user files. Put development caches and Docker storage on a drive with space.
 - Existing `Microsoft.OpenApi` NU1903 remains a separate dependency issue.
+
+## T7 durable job demonstration (Issue #27)
+
+Start the API as above. For the automated crash/recovery proof, stop any separately
+started Worker first: the harness owns and kills only its own child processes.
+Keep `DEMO_POSTGRES` set and run from the repository root:
+
+```powershell
+node tools/t7-smoke.mjs
+```
+
+This submits before starting a Worker (202/Queued), retries the same key, cancels a
+queued job, starts the real Worker hosted services with an isolated test-only model
+pause, kills that process during matching, restarts without a pause and requires a
+second execution to publish exactly one unapproved order. It replays persisted SSE,
+checks Arabic narrative, cancels active processing and verifies another job still
+runs after a blocked job. Finally six English/Arabic Approve/Reject/EditAndApprove
+workflows run through durable submission, including stale-token rejection,
+verification-gated dispatch and trace links. Proof goes to ignored
+`artifacts/t7-proof.json`; logs contain safe identifiers, not credentials.
+
+For interactive API testing, follow the job endpoints in HOST-SETUP. To run the six
+approval journeys with a separately running demo Worker:
+`node tools/demo-smoke.mjs --jobs`. The unchanged Angular diagnosis page still uses
+the legacy request-owned SSE endpoint; use `/api/jobs` for durable semantics.
+
+### بالعربية
+
+شغّل API الديمو أولاً واترك PostgreSQL تعمل. لا تشغّل Worker آخر أثناء
+`node tools/t7-smoke.mjs`؛ الاختبار يشغّل عملياته الخاصة ويوقفها لإثبات الاستعادة.
+يرجع طلب الوظيفة 202 ومعرّفاً ثابتاً قبل التشخيص. إغلاق بث الأحداث لا يلغي الوظيفة؛
+الإلغاء الصريح من `/api/jobs/{jobId}/cancel`. بعد الاستعادة يظل أمر العمل بانتظار
+موافقة بشرية، ولا يُسمح بالتسليم قبل تحقق متطلبات السلامة. اللغة تغيّر الشرح فقط.
+واجهة Angular الحالية تستخدم المسار القديم؛ اختبار الوظائف الدائمة يتم من API
+والسكريبت المذكور. التأخير التجريبي داخل برنامج الديمو فقط، وليس مزوّد الإنتاج.
+
+### T7 local validation checkpoint (2026-09-15)
+
+- .NET build: success, zero errors; eight pre-existing NU1903 warnings unchanged.
+- Full .NET suite: 546 passed, zero failures/skips (Domain 132, Application 187,
+  Infrastructure 151, API 17, Worker 14, PostgreSQL integration 45).
+- Final targeted rerun after review corrections: Application 9 and PostgreSQL 7 passed.
+- Angular: 20 unit tests passed on isolated retry; TypeScript check and production
+  build passed. Initial Vitest worker startup timed out before executing tests.
+- Browser: 26 passed, including the real API/PostgreSQL journey and Arabic/RTL.
+- Full T7 process restart/cancellation/SSE replay plus six bilingual durable approval
+  journeys passed once. The final repeat with an additional live-observer assertion
+  was stopped safely when C: free space fell to about 0.26 GiB. On continuation,
+  local Docker Desktop failed at its `dockerInference` socket before starting the
+  engine. The final live-observer repeat therefore runs against CI's real pgvector
+  service, without repairing or reconfiguring the developer's machine.
+- Windows reported a 7,010 MiB allocated page file on C:. No system configuration
+  was changed and no user/system files were deleted. Test API, Worker, smoke and
+  development frontend processes were stopped; PostgreSQL data was preserved.
+- GitHub Actions runs the full .NET suite, the live T7 proof, legacy bilingual HTTP
+  smoke and browser integration. The `t7-live-proof` artifact records completed
+  process-recovery assertions. CI success is required before final delivery.
