@@ -44,6 +44,8 @@ public sealed class SymptomMatcherAgent : ISymptomMatcher
                 IReadOnlyList<RetrievalResult> found;
                 try { found=await retrieval.RetrieveAsync(new(query,limits.TopK,candidate.DocumentId,candidate.ManualRevisionId),RetrievalMode.Hybrid,ct); }
                 catch(OperationCanceledException) when(ct.IsCancellationRequested) { throw; }
+                catch(DependencyFailureException) { throw; }
+                catch(UnauthorizedAccessException) { throw; }
                 catch { throw new AgentDependencyException(); }
                 ct.ThrowIfCancellationRequested();
                 if(found is null || found.Count>limits.TopK) throw new InvalidAgentOutputException();

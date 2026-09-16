@@ -1,3 +1,4 @@
+using IndustrialCopilot.Application.Abstractions.Usage;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using IndustrialCopilot.Api;
@@ -127,6 +128,11 @@ public static class ApiHost
             finally{HostAccess.Correlation.Value=null;}
         });
         app.UseAuthentication();app.UseAuthorization();app.UseRateLimiter();
+        app.Use(async(c,next)=>{
+            using var usage=new LlmCallScope(HostAuthentication.Identity(c) is {} actor && c.Items["correlation"] is Guid correlation
+                ?new UsageContext(actor.Actor,correlation):null);
+            await next(c);
+        });
         app.MapGet("/health/live",()=>Results.Ok(new{status="alive"}));
         app.MapGet("/health/ready",async(HttpContext c)=>
         {
@@ -136,7 +142,7 @@ public static class ApiHost
                 foreach(var key in new[]{"operations","receiver"})
                 {
                     var source=c.RequestServices.GetRequiredKeyedService<NpgsqlDataSource>(key);
-                    await using var command=source.CreateCommand(key=="operations"?"SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='operations' AND table_name='dispatch_attempts' AND column_name='next_reconciliation_at') AND to_regclass('operations.reasoning_job_events') IS NOT NULL":"SELECT to_regclass('dispatch_receiver.tickets') IS NOT NULL");
+                    await using var command=source.CreateCommand(key=="operations"?"SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='operations' AND table_name='dispatch_attempts' AND column_name='next_reconciliation_at') AND to_regclass('operations.reasoning_job_events') IS NOT NULL AND to_regclass('operations.llm_usage') IS NOT NULL":"SELECT to_regclass('dispatch_receiver.tickets') IS NOT NULL");
                     if(await command.ExecuteScalarAsync(timeout.Token) is not true)return Results.StatusCode(503);
                 }
                 await using var knowledge=c.RequestServices.GetRequiredService<NpgsqlDataSource>().CreateCommand("SELECT to_regclass('knowledge.chunks') IS NOT NULL");
@@ -146,7 +152,7 @@ public static class ApiHost
             catch{return Results.StatusCode(503);}
         });
         if(app.Environment.IsDevelopment())app.MapOpenApi();
-        MaintenanceEndpoints.Map(app); ProductEndpoints.Map(app); ReasoningJobEndpoints.Map(app);
+        MaintenanceEndpoints.Map(app); ProductEndpoints.Map(app); UsageEndpoints.Map(app); ReasoningJobEndpoints.Map(app);
         return app;
     }
 }

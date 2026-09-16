@@ -157,3 +157,31 @@ Review focuses on owner/equipment authorization, single-active-turn concurrency 
 Validation/self-review fixed raw host DI construction for history sanitization, evidence transport bounds without altering source text, permission filtering before conversation pagination, and late Angular history responses replacing a newer selection. Browser fixtures now obtain the real capability identity and preserve memory-only credentials during SPA navigation. HTTP regression coverage exercises actual disconnect cancellation, timeout, PDF/text ingestion, IDOR and rate limits. The existing ingestion crash test now waits for PostgreSQL backend termination instead of racing signal delivery; no production ingestion behavior was changed.
 
 Local Docker initially needed the user's restart repair; existing pgvector storage then ran without machine configuration changes. A parallel demo authorization run hit the enabled 429 limit and passed when run sequentially. Streaming proof recorded seven deltas before completion in both languages, provider disposal after one delta on cancellation, exact persisted citations across API restart, and unchanged T7 process-recovery/D5 safety journeys. Full validation details are included in the PR. Known Node test-environment warnings are separate from the zero-warning .NET build.
+
+## Issue #37 — FR-5 resilience and usage accounting
+
+AI assisted audit, bounded transient read-only retry classification, reuse of grounded Ask for
+advisory degradation, physical-provider accounting and owner/equipment-scoped PostgreSQL queries.
+No paid model, commercial pricing assertion or frozen FR-3 edit. Existing safety, approval, dispatch
+and T7 recovery boundaries were reused. Review found and corrected missing propagation of typed
+retrieval failures to fallback, preserved caller cancellation when usage cleanup fails, and retained
+exact citations under the bounded workflow SSE transport. Focused tests cover unknown usage, local
+cost semantics, streaming cancellation, retry suppression and real HTTP/PostgreSQL fallback.
+Validation totals and remaining limitations are reported after execution, not inferred from unit tests.
+
+Local validation: zero-warning .NET build; 666 distinct passing .NET tests including 65 PostgreSQL
+integration tests, 28 Angular tests, 30 mocked browser workflows and 3 real-host browser journeys,
+3 Node harness tests, TypeScript/production build/format checks. Dependency audit found no findings;
+full-history and working-change secret scans passed. Frozen FR-3: 30 cases / 12 adversarial,
+unchanged SHA256 ca023d78c65759125bbee3259d9edeb7f201cc3e72e4db30f847285225f52b38.
+
+Live fault proof exercised two attempts, Arabic grounded advisory/refusal, exact citations, no work
+order, owner isolation and identical usage call IDs after host restart. Product history/citations
+survived restart; T7 exercised actual worker process recovery, disconnect/cancellation and six
+bilingual approval/safety/dispatch workflows. A missing DEMO_POSTGRES variable in the first local
+T7 command was corrected before rerunning successfully. A 100ms timeout test was too short under
+parallel test load and now uses a two-second deadline; production policy did not change. Browser
+accessibility found an invalid status role on aside; replaced it with an appropriate div. Final
+review exposed missing public trace step IDs; the API now exposes safe IDs and an HTTP integration
+test joins every usage step to the trace. Node emitted existing localStorage/color environment
+warnings; no compiler/security warnings were suppressed. No live paid/provider quality claim.

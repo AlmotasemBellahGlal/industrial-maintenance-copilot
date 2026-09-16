@@ -17,7 +17,7 @@ public static class ReasoningJobEndpoints
     }
     private static object View(ReasoningJobSnapshot j)=>new {j.JobId,j.MaintenanceRunId,j.EquipmentId,j.CorrelationId,
         status=j.Status.ToString(),phase=j.Phase.ToString(),j.CreatedAt,j.UpdatedAt,j.CancellationRequested,j.Version,j.Attempts,
-        result=j.Result is {} r?new {outcome=r.Outcome.ToString(),r.RunId,r.WorkOrderId,r.TraceComplete,r.Narrative}:null,
+        result=j.Result is {} r?new {outcome=r.Outcome.ToString(),r.RunId,r.WorkOrderId,r.TraceComplete,r.Narrative,r.DegradationReason,r.Citations}:null,
         j.FailureCode,statusUrl=$"/api/jobs/{j.JobId}",progressUrl=$"/api/jobs/{j.JobId}/events"};
     public static void Map(WebApplication app)
     {
@@ -63,7 +63,7 @@ public static class ReasoningJobEndpoints
             if(job.IsTerminal)
             {
                 if(job.Result is {} result)
-                    await Write("Result",new {result.RunId,result.WorkOrderId,ExecutionId=job.Attempts.LastOrDefault()?.ExecutionId,job.CorrelationId,Outcome=result.Outcome.ToString(),result.Narrative});
+                    await Write("Result",new {result.RunId,result.WorkOrderId,ExecutionId=job.Attempts.LastOrDefault()?.ExecutionId,job.CorrelationId,Outcome=result.Outcome.ToString(),result.Narrative,result.DegradationReason,result.Citations});
                 await Write("Job",View(job));return;
             }
             await Write("Job",View(job));

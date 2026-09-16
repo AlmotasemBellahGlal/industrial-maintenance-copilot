@@ -1,3 +1,4 @@
+using IndustrialCopilot.Application.Abstractions.AI;
 using System.Text.Json;
 using IndustrialCopilot.Application.Abstractions.Actions;
 using IndustrialCopilot.Application.Abstractions.Agents;
@@ -21,7 +22,7 @@ public sealed record TrustedToolContext(string ActorId,AgentRole? Role,Guid Corr
 public sealed record RegisteredTool(ToolDefinition Definition,ToolEffect Effect);
 public sealed record ToolExecutionResult(ToolExecutionOutcome Outcome,
     IReadOnlyList<RetrievalResult>? Evidence=null,EquipmentContext? Equipment=null,
-    SafetyAssessment? Assessment=null,DispatchReservation? Dispatch=null);
+    SafetyAssessment? Assessment=null,DispatchReservation? Dispatch=null,DependencyFailureKind? Failure=null);
 
 /// <summary>Fixed capability registry. Descriptions are not permissions; dispatch is host-only.</summary>
 public sealed class TrustedToolExecutor(IRetrievalService retrieval,IEquipmentContextStore equipment,
@@ -66,6 +67,8 @@ public sealed class TrustedToolExecutor(IRetrievalService retrieval,IEquipmentCo
             outcome=result.Outcome; return result;
         }
         catch(OperationCanceledException) when(ct.IsCancellationRequested) { throw; }
+        catch(DependencyFailureException error) when(name=="retrieve_manual_evidence")
+        {return new(outcome=ToolExecutionOutcome.Unavailable,Failure:error.Failure);}
         catch { return new(outcome=ToolExecutionOutcome.Unavailable); }
         finally
         {

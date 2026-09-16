@@ -50,7 +50,8 @@ Three attempts maximum. Graceful interrupted attempts requeue with 2^attempt sec
 backoff; crashed attempts become eligible after expiry. Exhaustion fails the run.
 Observed invalid output, insufficient evidence, deterministic safety failures,
 authorization failures and permanent pipeline failures are terminal, not blindly
-retried. No additional provider retry loop is introduced. Lost infrastructure before
+retried as whole jobs. ADR-013 adds bounded read-only call retries within the shared
+agent deadline, suppressing provider fallback to avoid multiplication. Lost infrastructure before
 a terminal state can be persisted is treated as an interrupted ownership attempt.
 
 ## Cancellation, observation and accounting
@@ -88,3 +89,9 @@ idempotency and reconciliation path authoritative.
 
 Migration 005 is additive and reproducible. Real PostgreSQL concurrency/fencing
 tests and a separate-process kill/restart demo validate the durability boundary.
+
+## Read-only call resilience
+
+[ADR-013](ADR-013-resilience-and-usage-accounting.md) adds bounded per-call transient attempts within
+the existing agent deadline. Provider fallback is suppressed there. Terminal technical results are
+not whole-job retries; interrupted attempts still use safe replay, never model-call continuation.

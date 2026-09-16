@@ -5,6 +5,8 @@ import { Session } from './session';
 import { WorkflowResult } from './contracts';
 
 export interface Progress {
+  reasonCode?: string | null;
+  attempt?: number | null;
   kind: string;
   runId: string;
   executionId: string;
@@ -25,6 +27,9 @@ const kinds = [
   'Blocked',
   'Cancelled',
   'Failed',
+  'RetryScheduled',
+  'FallbackStarted',
+  'FallbackCompleted',
 ];
 export function decodeEvent(name: string, data: string): StreamEvent | null {
   const raw: unknown = JSON.parse(data);
@@ -43,6 +48,21 @@ export function decodeEvent(name: string, data: string): StreamEvent | null {
         executionId: str(v, 'ExecutionId'),
         correlationId: str(v, 'CorrelationId'),
         outcome: str(v, 'Outcome'),
+        degradationReason:
+          typeof v['DegradationReason'] === 'string' ? v['DegradationReason'] : null,
+        citations: Array.isArray(v['Citations'])
+          ? v['Citations'].map((raw: unknown) => {
+              if (!raw || typeof raw !== 'object') throw new ApiFailure(0);
+              const c = raw as Record<string, unknown>;
+              return {
+                documentId: str(c, 'DocumentId'),
+                manualRevisionId: str(c, 'ManualRevisionId'),
+                chunkId: str(c, 'ChunkId'),
+                locator: str(c, 'Locator'),
+                snippet: str(c, 'Snippet'),
+              };
+            })
+          : [],
         narrative: typeof v['Narrative'] === 'string' ? v['Narrative'] : null,
       },
     };
@@ -54,6 +74,8 @@ export function decodeEvent(name: string, data: string): StreamEvent | null {
   return {
     type: 'progress',
     value: {
+      reasonCode: typeof q['ReasonCode'] === 'string' ? q['ReasonCode'] : null,
+      attempt: typeof q['Attempt'] === 'number' ? q['Attempt'] : null,
       kind: name,
       runId: str(q, 'RunId'),
       executionId: str(v, 'ExecutionId'),

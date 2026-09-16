@@ -1,3 +1,4 @@
+using IndustrialCopilot.Application.Abstractions.Usage;
 using System.Runtime.CompilerServices;
 using IndustrialCopilot.Application.Abstractions.AI;
 using IndustrialCopilot.Application.Abstractions.AI.Models;
@@ -35,7 +36,7 @@ public sealed class ConfiguredLlmProvider : ILlmProvider
     {
         cancellationToken.ThrowIfCancellationRequested();
         try { return await execute(primary).ConfigureAwait(false); }
-        catch (LlmProviderException error) when (fallback is not null && ProviderFailures.CanFallback(error))
+        catch (LlmProviderException error) when (!LlmCallScope.OwnsRetries && fallback is not null && ProviderFailures.CanFallback(error))
         {
             cancellationToken.ThrowIfCancellationRequested();
             return await execute(fallback).ConfigureAwait(false);
@@ -60,7 +61,7 @@ public sealed class ConfiguredLlmProvider : ILlmProvider
                     iterator ??= primary.StreamAsync(request, cancellationToken).GetAsyncEnumerator(cancellationToken);
                     hasNext = await iterator.MoveNextAsync().ConfigureAwait(false);
                 }
-                catch (LlmProviderException error) when (!emitted && fallback is not null && ProviderFailures.CanFallback(error))
+                catch (LlmProviderException error) when (!emitted && !LlmCallScope.OwnsRetries && fallback is not null && ProviderFailures.CanFallback(error))
                 {
                     useFallback = true;
                     break;

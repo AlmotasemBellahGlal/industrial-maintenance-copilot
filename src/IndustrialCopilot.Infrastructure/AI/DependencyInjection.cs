@@ -1,3 +1,4 @@
+using IndustrialCopilot.Application.Abstractions.Usage;
 using System.Globalization;
 using IndustrialCopilot.Application.Abstractions.AI;
 using Microsoft.Extensions.Configuration;
@@ -62,8 +63,16 @@ public static class DependencyInjection
                 LlmProviderKind.Ollama => host.GetRequiredService<OllamaLlmProvider>(),
                 _ => throw Invalid("provider selection")
             };
-            return new ConfiguredLlmProvider(Resolve(options.PrimaryProvider),
-                options.FallbackEnabled ? Resolve(options.FallbackProvider!.Value) : null, Resolve(options.EmbeddingProvider));
+            ILlmProvider Account(LlmProviderKind kind)
+            {
+                var raw=Resolve(kind);var store=host.GetService<ILlmUsageStore>();if(store is null)return raw;
+                var chat=kind==LlmProviderKind.OpenAi?options.OpenAi!.ChatModel:options.Ollama!.ChatModel;
+                var embedding=kind==LlmProviderKind.OpenAi?options.OpenAi!.EmbeddingModel:options.Ollama!.EmbeddingModel;
+                return new AccountedLlmProvider(raw,store,host.GetRequiredService<UsagePricing>(),kind.ToString(),chat,embedding,
+                    kind==LlmProviderKind.OpenAi?BillingKind.Hosted:BillingKind.Local);
+            }
+            return new ConfiguredLlmProvider(Account(options.PrimaryProvider),
+                options.FallbackEnabled ? Account(options.FallbackProvider!.Value) : null, Account(options.EmbeddingProvider));
         });
         return services;
     }

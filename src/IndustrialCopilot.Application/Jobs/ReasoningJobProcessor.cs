@@ -1,3 +1,4 @@
+using IndustrialCopilot.Application.Abstractions.Usage;
 using IndustrialCopilot.Application.Abstractions.Jobs;
 using IndustrialCopilot.Application.Reasoning;
 
@@ -14,6 +15,8 @@ public sealed class ReasoningJobProcessor(IReasoningJobStore jobs,MaintenanceOrc
         try
         {
             using var bound=scope.Enter(claim);
+            using var usage=new LlmCallScope(new UsageContext(claim.ActorId,claim.Request.CorrelationId,
+                claim.Request.Input.Candidates[0].EquipmentId,claim.Request.RunId,claim.Request.ExecutionId,Purpose:UsagePurpose.Agent));
             var result=await orchestrator.ExecuteAsync(claim.Request,work.Token,durableAttempt:true,
                 durableProgress:(p,ct)=>jobs.ReportAsync(claim,p,ct));
             using var finish=new CancellationTokenSource(TimeSpan.FromSeconds(5));

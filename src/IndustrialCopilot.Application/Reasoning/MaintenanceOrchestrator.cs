@@ -1,3 +1,5 @@
+using IndustrialCopilot.Application.Abstractions.Usage;
+using IndustrialCopilot.Application.Abstractions.Agents.SymptomMatcher;
 using IndustrialCopilot.Application.Abstractions.Jobs;
 using IndustrialCopilot.Application.Abstractions.Agents;
 using IndustrialCopilot.Application.Abstractions.Agents.DiagnosticPlanning;
@@ -16,6 +18,7 @@ namespace IndustrialCopilot.Application.Reasoning;
 /// <summary>Sequential Pipeline. Host authorizes the request and supplies trusted candidates and policy configuration.</summary>
 public sealed class MaintenanceOrchestrator
 {
+    private readonly IPlainRagFallback? fallback;
     private readonly ILlmProvider llm;
     private readonly IRetrievalService retrieval;
     private readonly IWorkflowStore workflows;
@@ -24,12 +27,12 @@ public sealed class MaintenanceOrchestrator
     private readonly ReasoningLimits limits;
     private readonly TimeProvider clock;
     public MaintenanceOrchestrator(ILlmProvider llm,IRetrievalService retrieval,IWorkflowStore workflows,ISafetyPolicy safety,
-        IRunTraceStore traces,ReasoningLimits? limits=null,TimeProvider? clock=null)
+        IRunTraceStore traces,ReasoningLimits? limits=null,TimeProvider? clock=null,IPlainRagFallback? fallback=null)
     {
         ArgumentNullException.ThrowIfNull(llm); ArgumentNullException.ThrowIfNull(retrieval); ArgumentNullException.ThrowIfNull(workflows);
         ArgumentNullException.ThrowIfNull(safety); ArgumentNullException.ThrowIfNull(traces);
         this.llm=llm; this.retrieval=retrieval; this.workflows=workflows; this.safety=safety; this.traces=traces;
-        this.limits=limits??new(); this.clock=clock??TimeProvider.System;
+        this.fallback=fallback; this.limits=limits??new(); this.clock=clock??TimeProvider.System;
     }
 
     public async Task<MaintenanceReasoningResult> ExecuteAsync(MaintenanceReasoningRequest request,CancellationToken cancellationToken,IProgress<MaintenanceProgress>? progress=null,
@@ -37,6 +40,11 @@ public sealed class MaintenanceOrchestrator
     {
         ArgumentNullException.ThrowIfNull(request); cancellationToken.ThrowIfCancellationRequested();
         var input=request.Input;
+        var callContext=LlmCallScope.Current;
+        using var usageScope=new LlmCallScope(callContext is null?null:callContext with {
+            EquipmentId=input.Candidates[0].EquipmentId,RunId=request.RunId,ExecutionId=request.ExecutionId,
+            CorrelationId=request.CorrelationId,Purpose=UsagePurpose.Agent});
+        EquipmentManualCandidate? fallbackCandidate=input.Candidates.Count==1?input.Candidates[0]:null;
         var run=new MaintenanceRun(request.RunId,input.Candidates[0].EquipmentId,input.ReportedSymptom);
         // Durable attempts replay only before publication, under the host persistence lease fence.
         if(await traces.GetAsync(request.ExecutionId,cancellationToken) is not null)
@@ -63,6 +71,7 @@ public sealed class MaintenanceOrchestrator
             await trace.Flush(cancellationToken);
             var match=await Stage(AgentRole.SymptomMatcher,(runtime,ct)=>new SymptomMatcherAgent(runtime,retrieval,limits).MatchAsync(input,ct),r=>r.Outcome);
             if(match.Outcome!=AgentOutcome.Success) return await Block(match.Outcome);
+            fallbackCandidate=match.Match!.SelectedCandidate;
             var plan=await Stage(AgentRole.DiagnosticSafetyPlanner,(runtime,ct)=>new DiagnosticSafetyPlannerAgent(runtime).PlanAsync(new(input.ReportedSymptom,match.Match!),ct),r=>r.Outcome);
             if(plan.Outcome!=AgentOutcome.Success) return await Block(plan.Outcome);
             var assessment=await Assess(plan.Plan!,null);
@@ -106,8 +115,11 @@ public sealed class MaintenanceOrchestrator
         catch(JobLeaseLostException) { throw; }
         catch(AgentTimedOutException)
         {
-            var cancelled=await Finish(false,"agent_timeout");
-            return new(cancelled?MaintenanceReasoningOutcome.Cancelled:MaintenanceReasoningOutcome.TimedOut,run.Id,null);
+            return await Degrade("agent_timeout",MaintenanceReasoningOutcome.TimedOut);
+        }
+        catch(AgentDependencyException error) when(error.Failure is DependencyFailureKind.Transient or DependencyFailureKind.Timeout)
+        {
+            return await Degrade(error.Failure==DependencyFailureKind.Timeout?"provider_timeout":"transient_exhausted",MaintenanceReasoningOutcome.Failed);
         }
         catch(WorkflowConflictException)
         {
@@ -141,7 +153,7 @@ public sealed class MaintenanceOrchestrator
             timeout.CancelAfter(limits.AgentTimeout);
             try
             {
-                var result=await operation(new(llm,limits,trace,id,request.ResponseCulture),timeout.Token).WaitAsync(timeout.Token);
+                var result=await operation(new(llm,limits,trace,id,request.ResponseCulture,async(code,attempt)=>{ await Emit(MaintenanceProgressKind.RetryScheduled,role,reason:code,attempt:attempt); await trace.Flush(cancellationToken); }),timeout.Token).WaitAsync(timeout.Token);
                 timeout.Token.ThrowIfCancellationRequested();
                 var outcome=getOutcome(result);
                 await Emit(MaintenanceProgressKind.AgentCompleted,role);
@@ -153,6 +165,7 @@ public sealed class MaintenanceOrchestrator
             catch(OperationCanceledException) when(timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             { trace.End(id,TraceStepStatus.Cancelled); throw new AgentTimedOutException(); }
             catch(OperationCanceledException) { trace.End(id,TraceStepStatus.Cancelled); throw; }
+            catch(DependencyFailureException error) { trace.End(id,TraceStepStatus.Failed,"agent_failed"); throw new AgentDependencyException(error.Failure); }
             catch { trace.End(id,TraceStepStatus.Failed,"agent_failed"); throw; }
         }
         async Task<SafetyAssessment> Assess(DiagnosticPlan plan,WorkOrderProposal? proposal)
@@ -171,7 +184,7 @@ public sealed class MaintenanceOrchestrator
                 return result;
             }
             catch(OperationCanceledException) when(timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-            { trace.End(id,TraceStepStatus.Cancelled); throw new AgentTimedOutException(); }
+            { trace.End(id,TraceStepStatus.Cancelled); throw new InvalidOperationException("Safety policy timed out."); }
             catch(OperationCanceledException) { trace.End(id,TraceStepStatus.Cancelled); throw; }
             catch { trace.End(id,TraceStepStatus.Failed,"safety_policy_failed"); throw; }
         }
@@ -184,6 +197,52 @@ public sealed class MaintenanceOrchestrator
             await trace.Flush(cancellationToken);
             await Emit(MaintenanceProgressKind.Blocked);
             return new(outcome==AgentOutcome.InsufficientEvidence?MaintenanceReasoningOutcome.InsufficientEvidence:MaintenanceReasoningOutcome.CannotProceed,run.Id,null);
+        }
+        async Task<MaintenanceReasoningResult> Degrade(string reason,MaintenanceReasoningOutcome failure)
+        {
+            // Never entered for policy/schema/auth/conflict/cancellation failures. Publication is never repeated.
+            if(published)return new(MaintenanceReasoningOutcome.Proposed,run.Id,request.WorkOrderId,false);
+            if(fallback is null)
+            {
+                var cancelled=await Finish(false,reason);
+                return new(cancelled?MaintenanceReasoningOutcome.Cancelled:failure,run.Id,null);
+            }
+            Guid? step=null;
+            try
+            {
+                await CheckRun(cancellationToken);
+                await Emit(MaintenanceProgressKind.FallbackStarted,reason:reason);
+                step=trace.Start(TraceOperationKind.Orchestration,"grounded_rag_fallback",root);
+                using var bound=CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                bound.CancelAfter(limits.FallbackTimeout);
+                using var context=new LlmCallScope(LlmCallScope.Current is {} u?u with {Agent=null,StepId=step,Purpose=UsagePurpose.GroundedFallback}:null,managedRetries:true);
+                var result=fallbackCandidate is null?new GroundedFallbackResult(false,null,[]):
+                    await fallback.AnswerAsync(fallbackCandidate,input.ReportedSymptom,request.ResponseCulture,bound.Token).WaitAsync(bound.Token);
+                bound.Token.ThrowIfCancellationRequested();
+                await CheckRun(cancellationToken);
+                trace.End(step.Value);
+                // The specialized maintenance workflow failed; advisory fallback never completes it or publishes a WorkOrder.
+                if(await Finish(false,reason))return new(MaintenanceReasoningOutcome.Cancelled,run.Id,null);
+                await Emit(MaintenanceProgressKind.FallbackCompleted,reason:reason);
+                return new(result.Answered?MaintenanceReasoningOutcome.Degraded:MaintenanceReasoningOutcome.DegradedRefused,
+                    run.Id,null,Narrative:result.Answer,DegradationReason:reason,Citations:result.Citations);
+            }
+            catch(JobLeaseLostException) {throw;}
+            catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+            {
+                if(!durableAttempt)await Finish(true,"caller_cancelled");throw;
+            }
+            catch(DurableCancellationException)
+            {
+                if(!durableAttempt)await Finish(true,"durable_cancellation");return new(MaintenanceReasoningOutcome.Cancelled,run.Id,null);
+            }
+            catch(WorkflowConflictException){return new(MaintenanceReasoningOutcome.Conflict,run.Id,null,false);}
+            catch
+            {
+                if(step is {} id)trace.End(id,TraceStepStatus.Failed,"fallback_unavailable");
+                var cancelled=await Finish(false,"fallback_unavailable");
+                return new(cancelled?MaintenanceReasoningOutcome.Cancelled:failure,run.Id,null,DegradationReason:reason);
+            }
         }
         async Task<bool> Finish(bool cancelled,string code)
         {
@@ -206,9 +265,9 @@ public sealed class MaintenanceOrchestrator
             await Emit(cancelled?MaintenanceProgressKind.Cancelled:MaintenanceProgressKind.Failed);
             return cancelled;
         }
-        async Task Emit(MaintenanceProgressKind kind,AgentRole? role=null,bool? allowed=null,Guid? workOrder=null)
+        async Task Emit(MaintenanceProgressKind kind,AgentRole? role=null,bool? allowed=null,Guid? workOrder=null,string? reason=null,int? attempt=null)
         {
-            var value=new MaintenanceProgress(kind,run.Id,role,allowed,workOrder);
+            var value=new MaintenanceProgress(kind,run.Id,role,allowed,workOrder,reason,attempt);
             if(durableProgress is not null) await durableProgress(value,cancellationToken);
             try { progress?.Report(value); } catch { /* Legacy observation is not workflow authority. */ }
         }

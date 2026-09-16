@@ -1,3 +1,4 @@
+using IndustrialCopilot.Application.Abstractions.Usage;
 using Microsoft.AspNetCore.Mvc;
 using System.Globalization;
 using System.Security.Claims;
@@ -60,6 +61,7 @@ public static class ProductEndpoints
         var actor=Actor(c);var conversation=await store.GetAsync(actor,id,c.RequestAborted);
         if(conversation is null||!Can(c,"read",conversation.EquipmentId)){await Fail(c,404,"not_found").ExecuteAsync(c);return;}
         var correlation=(Guid)c.Items["correlation"]!;
+        using var usage=new LlmCallScope(new UsageContext(actor,correlation,conversation.EquipmentId,Purpose:UsagePurpose.Ask));
         var safeQuestion=history.Sanitize(question.Text);
         var turn=await store.BeginAsync(actor,id,safeQuestion[..Math.Min(2000,safeQuestion.Length)],correlation,c.RequestAborted);
         if(turn is null){await Fail(c,409,"conversation_busy").ExecuteAsync(c);return;}
@@ -117,6 +119,7 @@ public static class ProductEndpoints
         DocumentProcessingRequest request;
         try{request=new(document,revision,media,new DocumentMetadata(title,filename,revisionNumber));}catch(ArgumentException){return Fail(c,400,"invalid_request");}
         if(!await catalog.RegisterAsync(equipmentId,document,revision,c.RequestAborted))return Fail(c,409,"document_scope_conflict");
+        using var usage=new LlmCallScope(new UsageContext(Actor(c),(Guid)c.Items["correlation"]!,equipmentId,Purpose:UsagePurpose.Ingestion));
         using var bound=CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted);bound.CancelAfter(TimeSpan.FromMinutes(2));
         try
         {

@@ -453,3 +453,33 @@ test('reduced-motion mobile navigation and confirmation retain accessible focus'
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Approve revision 2', exact: true })).toBeFocused();
 });
+
+test('degraded result preserves exact evidence and has no review authority in either language', async ({
+  page,
+}) => {
+  await backend(page);
+  await page.route('**/api/runs/stream', async (route) =>
+    route.fulfill({
+      contentType: 'text/event-stream',
+      body: `event: Result\ndata: ${JSON.stringify({ RunId: orderId, ExecutionId: revision, CorrelationId: manual, WorkOrderId: null, Outcome: 'Degraded', Narrative: 'Advisory evidence answer', DegradationReason: 'transient_exhausted', Citations: [{ DocumentId: manual, ManualRevisionId: revision, ChunkId: requirement, Locator: 'page 7', Snippet: 'Exact source — do not translate.' }] })}\n\n`,
+    }),
+  );
+  await credential(page);
+  await page.getByRole('link', { name: 'New diagnosis', exact: true }).click();
+  await page.getByLabel('Equipment ID').fill(orderId);
+  await page.getByLabel('Reported symptom').fill('Bearing noise');
+  await page.getByRole('button', { name: 'Start grounded diagnosis' }).click();
+  await expect(
+    page.getByText('Grounded fallback — no work order created', { exact: true }),
+  ).toBeVisible();
+  await page.locator('summary').filter({ hasText: 'page 7' }).click();
+  await expect(page.getByText('Exact source — do not translate.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Review proposed work order' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'العربية', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  await expect(
+    page.getByText('إجابة بديلة مستندة إلى الأدلة — لم يُنشأ أمر عمل', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('Exact source — do not translate.', { exact: true })).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});

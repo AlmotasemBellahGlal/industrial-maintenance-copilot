@@ -5,8 +5,9 @@ public sealed record EmbeddingResult
 {
     public IReadOnlyList<IReadOnlyList<float>> Vectors { get; }
     public string? Model { get; }
+    public TokenUsage? Usage { get; }
 
-    public EmbeddingResult(IReadOnlyList<IReadOnlyList<float>> vectors, string? model = null)
+    public EmbeddingResult(IReadOnlyList<IReadOnlyList<float>> vectors, string? model = null, TokenUsage? usage = null)
     {
         ArgumentNullException.ThrowIfNull(vectors);
         var snapshot = new IReadOnlyList<float>[vectors.Count];
@@ -17,6 +18,6 @@ public sealed record EmbeddingResult
             snapshot[index] = Array.AsReadOnly(vector.ToArray());
         }
         Vectors = Array.AsReadOnly(snapshot);
-        Model = model;
+        Model = model; Usage = usage;
     }
 }

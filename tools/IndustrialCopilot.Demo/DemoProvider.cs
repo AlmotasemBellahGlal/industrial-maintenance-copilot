@@ -5,13 +5,14 @@ using IndustrialCopilot.Application.Abstractions.AI.Models;
 namespace IndustrialCopilot.Demo;
 
 /// <summary>Deterministic test double, not an industrial diagnostic model. Only this separate demo executable registers it.</summary>
-internal sealed class DemoProvider(int delayMilliseconds=0) : ILlmProvider
+internal sealed class DemoProvider(int delayMilliseconds=0,bool failReasoning=false) : ILlmProvider
 {
     public async Task<ToolCompletionResponse> CompleteWithToolsAsync(CompletionRequest request,IReadOnlyList<ToolDefinition> tools,CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         // Explicit test-only pause for crash/cancellation demonstrations, absent from production providers.
         if(delayMilliseconds>0) await Task.Delay(delayMilliseconds,ct);
+        if(failReasoning)throw new DependencyFailureException(DependencyFailureKind.Transient);
         var system=request.Messages[0].Content;
         if(system.Contains("You are the Symptom Matcher",StringComparison.Ordinal))
         {
@@ -22,7 +23,7 @@ internal sealed class DemoProvider(int delayMilliseconds=0) : ILlmProvider
             if(!request.Messages.Any(m=>m.Role==LlmRole.Tool))
             {
                 using var args=JsonDocument.Parse("""{"candidate":0,"query":"vibration pump seal"}""");
-                return new ToolCompletionResponse("",[new("demo-retrieval","retrieve_evidence",args.RootElement)],new(10,5,15));
+                return new ToolCompletionResponse("",[new("demo-retrieval","retrieve_evidence",args.RootElement)],null);
             }
             // No match without retrieved evidence. The actual agent validates and resolves e0.
             if(request.Messages.Last().Content=="[]")return await Output("""{"outcome":"InsufficientEvidence"}""");
@@ -37,7 +38,7 @@ internal sealed class DemoProvider(int delayMilliseconds=0) : ILlmProvider
             return await Output("""{"outcome":"Success","description":"Inspect isolated pump","actions":[{"order":1,"instruction":"Inspect seal","evidence":["e0"]}]}""");
         throw new NotSupportedException("Unknown demo role.");
     }
-    private static Task<ToolCompletionResponse> Output(string text)=>Task.FromResult(new ToolCompletionResponse(text,[],new(10,10,20)));
+    private static Task<ToolCompletionResponse> Output(string text)=>Task.FromResult(new ToolCompletionResponse(text,[],null));
     public Task<EmbeddingResult> GenerateEmbeddingsAsync(EmbeddingRequest request,CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -68,7 +69,7 @@ internal sealed class DemoProvider(int delayMilliseconds=0) : ILlmProvider
             }
         }
         await Task.Delay(150,ct);
-        emitted++; yield return new(ar?"لا يمثل هذا اعتمادًا للسلامة أو إذنًا بالتنفيذ.":"This is not safety approval or permission to execute.",true,new(10,20,30));
+        emitted++; yield return new(ar?"لا يمثل هذا اعتمادًا للسلامة أو إذنًا بالتنفيذ.":"This is not safety approval or permission to execute.",true,null);
         }
         finally { Console.WriteLine($"DEMO Ask stream stopped: cancelled={ct.IsCancellationRequested}; deltas={emitted}"); }
     }

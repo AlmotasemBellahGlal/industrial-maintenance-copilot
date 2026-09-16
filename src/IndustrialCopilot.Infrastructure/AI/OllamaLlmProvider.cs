@@ -57,7 +57,10 @@ public sealed class OllamaLlmProvider : ILlmProvider, IDisposable
             dimensions = vector.Length;
             vectors.Add(vector);
         }
-        return new(vectors, OpenAiProtocol.RequiredText(root, "model"));
+        TokenUsage? usage=null;
+        if(root.TryGetProperty("prompt_eval_count",out var countValue))
+        {var prompt=countValue.GetInt32();if(prompt<0)throw OpenAiProtocol.Invalid();usage=new(prompt,0,prompt);}
+        return new(vectors, OpenAiProtocol.RequiredText(root, "model"),usage);
     }
 
     public void Dispose() => client.Dispose();
