@@ -57,6 +57,9 @@ public static class ApiHost
         builder.WebHost.ConfigureKestrel(o=>o.Limits.MaxRequestBodySize=128*1024);
         builder.Services.AddOpenApi();
         ApiSecurity.Register(builder);
+        var askSeconds=builder.Configuration.GetValue<int?>("Ask:TimeoutSeconds")??60;
+        if(askSeconds is <1 or >60)throw new InvalidOperationException("Ask timeout must be 1–60 seconds.");
+        builder.Services.AddSingleton(new AskStreamLimits(askSeconds));
         builder.Services.AddLocalization(o=>o.ResourcesPath="Resources");
         builder.Services.Configure<RequestLocalizationOptions>(o=>
         {
@@ -143,7 +146,7 @@ public static class ApiHost
             catch{return Results.StatusCode(503);}
         });
         if(app.Environment.IsDevelopment())app.MapOpenApi();
-        MaintenanceEndpoints.Map(app); ReasoningJobEndpoints.Map(app);
+        MaintenanceEndpoints.Map(app); ProductEndpoints.Map(app); ReasoningJobEndpoints.Map(app);
         return app;
     }
 }

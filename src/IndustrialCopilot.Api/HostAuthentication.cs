@@ -34,7 +34,7 @@ public sealed class HostAuthentication(IOptionsMonitor<AuthenticationSchemeOptio
     }
     public static IReadOnlyList<HostCredential> Read(IConfiguration config)
     {
-        var allowed=new HashSet<string>{"read","start","approve","verify","dispatch"}; var result=new List<HostCredential>();
+        var allowed=new HashSet<string>{"read","start","approve","verify","dispatch","ingest"}; var result=new List<HostCredential>();
         foreach(var entry in config.GetSection("Authentication:Credentials").GetChildren())
         {
             var actor=entry["Actor"]; var secret=entry["Secret"]; var permissions=(entry["Permissions"]??"").Split(',',StringSplitOptions.RemoveEmptyEntries).ToHashSet();
