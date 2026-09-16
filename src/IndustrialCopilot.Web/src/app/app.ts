@@ -14,11 +14,13 @@ export class App {
   readonly menu = signal(false);
   readonly links = [
     { path: '/', label: 'Dashboard', number: '01' },
-    { path: '/diagnosis', label: 'New diagnosis', number: '02' },
-    { path: '/runs', label: 'Maintenance runs', number: '03' },
-    { path: '/work-orders', label: 'Work orders', number: '04' },
-    { path: '/dispatch', label: 'Dispatch', number: '05' },
-    { path: '/traces', label: 'Trace / activity', number: '06' },
+    { path: '/ask', label: 'Ask with citations', number: '02' },
+    { path: '/ingest', label: 'Ingest manual', number: '03' },
+    { path: '/diagnosis', label: 'New diagnosis', number: '04' },
+    { path: '/runs', label: 'Maintenance runs', number: '05' },
+    { path: '/work-orders', label: 'Work orders', number: '06' },
+    { path: '/dispatch', label: 'Dispatch', number: '07' },
+    { path: '/traces', label: 'Trace / activity', number: '08' },
   ];
   constructor() {
     inject(Router)
