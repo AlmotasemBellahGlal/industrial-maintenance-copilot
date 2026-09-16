@@ -84,3 +84,13 @@ git diff --check
 Browser tests use installed Chrome locally; no browser is installed automatically. CI provisions Playwright Chromium. They use explicit API contract fixtures and real browser rendering, not live LLM/ERP calls. Backend tests retain real loopback HTTP and isolated PostgreSQL coverage in CI.
 
 Browser coverage includes preview invalidation, exact payloads, confirmations, verification, dispatch states, 409, 401/403, SSE casing/deduplication, forms, literal citations and axe/overflow at 375/768/1024/1440px. Unit tests cover HTTP mappings, bounded sessions, fragmented/truncated SSE, cancellation and validation. No lint tool is configured; strict compiler checks and Prettier formatting are used.
+
+## Ask, ingestion and roles
+
+Navigation now includes **Ask with citations** and **Ingest manual**. Connect with a host-issued bearer credential; the header shows the verified role/actor from `/api/identity`. Credentials remain in memory, so reconnect after reload. Conversation content is restored from PostgreSQL, not browser storage.
+
+Create a conversation with provisioned equipment, document and revision IDs. Its response language is fixed at creation from the selected English/Arabic preference. Ask questions independently; history is not implicit model memory. Cancel stops request-owned generation; retry creates a new turn. Source text is displayed verbatim as plain text alongside document/revision/chunk IDs and locator. Refusal is explicit.
+
+Ingest requires the host `ingest` permission. Choose .txt or .pdf, maximum16 MB, title and positive revision number. Retain IDs to retry the same revision. Use Refresh ingestion status to inspect stage outcomes/counts. Uploading is not safety approval. The Technician UI lacks supervisor mutation controls; server checks remain authoritative even if a client bypasses the UI.
+
+Bilingual layouts use existing language persistence and document dir, text-only answer bindings, keyboard-labelled forms, visible status and wrapped provenance identifiers. No new UI framework or remote assets are introduced.

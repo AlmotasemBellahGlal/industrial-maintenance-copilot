@@ -66,9 +66,9 @@ public class IngestionPersistenceTests(KnowledgeDatabase database) : IClassFixtu
         var attempt=await reports.BeginAsync(request,default);
         await attempt.AdvanceAsync(IngestionStage.Indexing,null,1,default);
         Assert.Equal(IngestionState.Processing,Assert.Single(await reports.ReadAsync(request.DocumentId,request.ManualRevisionId,default)).State);
-        // Terminate the actual dedicated backend as a process-loss analogue, not just an in-memory fake.
-        await using(var kill=database.Source.CreateCommand("SELECT pg_terminate_backend(backend_pid) FROM knowledge.ingestion_attempts WHERE id=@id"))
-        {kill.Parameters.AddWithValue("id",attempt.Id);await kill.ExecuteNonQueryAsync();}
+        // Wait for actual backend termination, not merely signal delivery, before asserting interruption.
+        await using(var kill=database.Source.CreateCommand("SELECT pg_terminate_backend(backend_pid,5000) FROM knowledge.ingestion_attempts WHERE id=@id"))
+        {kill.Parameters.AddWithValue("id",attempt.Id);Assert.True((bool)(await kill.ExecuteScalarAsync())!);}
         await attempt.DisposeAsync();
         Assert.Equal(IngestionState.Interrupted,Assert.Single(await new PostgresIngestionReports(database.ConnectionString).ReadAsync(request.DocumentId,request.ManualRevisionId,default)).State);
         var chunk=new IndexedChunk(new(request.DocumentId,request.ManualRevisionId,Guid.NewGuid(),"line 1","pump"),Enumerable.Repeat(1f,32).ToArray());

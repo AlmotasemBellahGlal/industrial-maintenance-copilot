@@ -267,3 +267,21 @@ a crashed attempt's trace may be incomplete and its usage must not be invented.
 ### Text/PDF ingestion and status
 
 The existing `--ingest` command now accepts `.txt` and `.pdf`. Supply optional `--ingest-metadata <title> <source-label> <positive-revision-number>` for new sources. Inspect `--ingestion-status <manual-guid> <revision-guid>` for durable attempt states and safe failure categories. The configured manual/revision allowlist still applies. Run knowledge migrations before ingestion. Full limits, synthetic corpus commands and interruption semantics: [CORPUS-INGESTION](CORPUS-INGESTION.md).
+
+## Product Ask and ingestion (Issue #35)
+
+Apply the existing `--migrate` command before deployment; it now includes operational migration 006 (conversations/ask_turns). Keep all existing knowledge migrations. Optional `Ask:TimeoutSeconds` defaults to 60 and accepts 1–60. Give document operators the explicit `ingest` permission in addition to their equipment scope; this is not implied by `approve`. Existing API authentication, actor-wide POST limits, safe errors and CORS apply unchanged.
+
+| Method/path | Contract |
+|---|---|
+| GET `/api/identity` | Trusted actor, role label, permissions, equipment IDs; no credentials |
+| POST `/api/conversations` | EquipmentId, DocumentId, ManualRevisionId; culture from Accept-Language |
+| GET `/api/conversations?offset=0&limit=20` | Current actor's authorized history; limit 1–50, offset 0–10000 |
+| GET `/api/conversations/{id}?after=0&limit=20` | Owned conversation plus turns after sequence; bounded 1–50 |
+| POST `/api/conversations/{id}/ask` | JSON Question, optional TopK (default5, 1–10); SSE |
+| POST `/api/documents/{document}/revisions/{revision}/ingest` | Raw text/plain or application/pdf body; query equipmentId, filename, title, revisionNumber |
+| GET `/api/documents/{document}/revisions/{revision}/ingestion?equipmentId=...` | Bounded per-attempt status, page/chunk counts and safe failure category |
+
+Use a provisioned equipment ID and stable nonempty document/revision GUIDs. New source associations do **not** make procedures executable or approved. Reverse proxies must allow the upload route's 16,000,000-byte bound and disable response buffering for Ask SSE. Other API bodies retain the existing 128 KiB limit. Bearer headers, not query tokens, authenticate streams. Forward Accept-Language, X-Correlation-ID and disconnect cancellation.
+
+Ask events: meta/evidence/delta/citation/completed/error. No event IDs or resume promise: a retry is a new explicit request. Read persisted history after uncertain completion. History states are 0 Streaming, 1 Completed, 2 InsufficientEvidence, 3 Cancelled, 4 Failed. Ask disconnect cancels generation; T7 observation disconnect never cancels its durable job. See [ADR-012](adr/ADR-012-request-owned-ask-and-conversations.md).

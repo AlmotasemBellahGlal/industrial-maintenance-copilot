@@ -1,0 +1,129 @@
+<p class="eyebrow">{{ 'Knowledge base' | t }}</p>
+<h1>{{ 'Ask with citations' | t }}</h1>
+<p class="lede">
+  {{ 'Advisory answers from one manual revision. No approval or dispatch authority.' | t }}
+</p>
+@if (error()) {
+  <p role="alert" class="field-error">{{ error() | t }}</p>
+}
+<section class="panel">
+  <h2>{{ 'Conversations' | t }}</h2>
+  <p>{{ 'History is stored on the host. Reconnect with your credential after reload.' | t }}</p>
+  <div class="actions">
+    <button (click)="list()" [disabled]="busy()">{{ 'Refresh history' | t }}</button
+    ><button (click)="list(offset - 20)" [disabled]="busy() || offset === 0">
+      {{ 'Previous' | t }}</button
+    ><button (click)="list(offset + 20)" [disabled]="busy() || conversations().length < 20">
+      {{ 'Next' | t }}
+    </button>
+  </div>
+  @for (c of conversations(); track c.id) {
+    <button
+      (click)="select(c)"
+      [disabled]="busy()"
+      [attr.aria-pressed]="current()?.id === c.id"
+      class="history-choice"
+    >
+      <bdi>{{ c.createdAt }} · {{ c.culture }} · {{ c.id }}</bdi>
+    </button>
+  } @empty {
+    <p>{{ 'No conversations yet.' | t }}</p>
+  }
+  <details>
+    <summary>{{ 'New conversation' | t }}</summary>
+    <form ngNativeValidate (ngSubmit)="create()">
+      <fieldset [disabled]="busy()">
+        <div class="form-grid">
+          <label
+            >{{ 'Equipment ID' | t
+            }}<input name="equipment" [(ngModel)]="equipment" required pattern="[0-9a-fA-F-]{36}"
+          /></label>
+          <label
+            >{{ 'Document ID' | t
+            }}<input name="document" [(ngModel)]="document" required pattern="[0-9a-fA-F-]{36}"
+          /></label>
+          <label
+            >{{ 'Revision ID' | t
+            }}<input name="revision" [(ngModel)]="revision" required pattern="[0-9a-fA-F-]{36}"
+          /></label>
+        </div>
+        <button type="submit">{{ 'Create conversation' | t }}</button>
+      </fieldset>
+    </form>
+  </details>
+</section>
+@if (current(); as c) {
+  <section class="panel">
+    <h2>
+      {{ 'Conversation' | t }} <bdi>{{ c.id }}</bdi>
+    </h2>
+    <p>{{ 'Answer language' | t }}: {{ c.culture }}</p>
+    @for (turn of turns(); track turn.id) {
+      <article class="panel">
+        <h3>{{ turn.question }}</h3>
+        <p>{{ state(turn.state) | t }}</p>
+        <p class="answer-text" dir="auto">{{ turn.answer }}</p>
+        @for (source of turn.citations; track source.chunkId) {
+          <details>
+            <summary>
+              <bdi>{{ source.locator }}</bdi>
+            </summary>
+            <p>
+              <bdi
+                >{{ source.documentId }} / {{ source.manualRevisionId }} / {{ source.chunkId }}</bdi
+              >
+            </p>
+            <blockquote dir="auto">{{ source.snippet }}</blockquote>
+          </details>
+        }
+      </article>
+    }
+    @if (moreTurns()) {
+      <button (click)="more()" [disabled]="busy()">{{ 'More history' | t }}</button>
+    }
+    <form ngNativeValidate (ngSubmit)="ask()">
+      <label for="question">{{ 'Your question' | t }}</label
+      ><textarea
+        id="question"
+        name="question"
+        [(ngModel)]="question"
+        required
+        maxlength="2000"
+        rows="3"
+        [disabled]="busy()"
+      ></textarea>
+      <div class="actions">
+        <button type="submit" class="primary" [disabled]="busy() || !question.trim()">
+          {{ 'Ask / retry as new request' | t }}</button
+        ><button type="button" (click)="cancel()" [disabled]="!busy()">
+          {{ 'Cancel answer' | t }}
+        </button>
+      </div>
+    </form>
+    <p role="status">{{ status() | t }}</p>
+    @if (status() === 'InsufficientEvidence') {
+      <p>
+        {{
+          'Not enough matching evidence. Refine the question or ingest the applicable manual.' | t
+        }}
+      </p>
+    }
+    <p class="answer-text" dir="auto" data-testid="live-answer">{{ answer() }}</p>
+    @for (source of citations(); track source.chunkId) {
+      <details open>
+        <summary>
+          {{ 'Source' | t }}: <bdi>{{ source.locator }}</bdi>
+        </summary>
+        <p>
+          <bdi>{{ source.documentId }} / {{ source.manualRevisionId }} / {{ source.chunkId }}</bdi>
+        </p>
+        <blockquote dir="auto">{{ source.snippet }}</blockquote>
+      </details>
+    }
+    @if (correlation()) {
+      <p>
+        {{ 'Correlation ID' | t }}: <bdi>{{ correlation() }}</bdi>
+      </p>
+    }
+  </section>
+}

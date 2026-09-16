@@ -1,6 +1,16 @@
 import { Routes } from '@angular/router';
 export const routes: Routes = [
   {
+    path: 'ask',
+    title: 'Ask | Maintenance Copilot',
+    loadComponent: () => import('./pages/ask').then((m) => m.AskPage),
+  },
+  {
+    path: 'ingest',
+    title: 'Ingest | Maintenance Copilot',
+    loadComponent: () => import('./pages/ingest').then((m) => m.IngestPage),
+  },
+  {
     path: '',
     title: 'Operations dashboard | Maintenance Copilot',
     loadComponent: () => import('./pages/dashboard').then((m) => m.Dashboard),

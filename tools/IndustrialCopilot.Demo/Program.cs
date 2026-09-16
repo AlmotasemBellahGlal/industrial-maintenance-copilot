@@ -41,7 +41,7 @@ var config=new Dictionary<string,string?>
     ["ConnectionStrings:Operations"]=connection,["ConnectionStrings:Knowledge"]=connection,["ConnectionStrings:DispatchReceiver"]=connection,
     ["Dispatch:Adapter"]="PostgresInbox",["Worker:EquipmentIds"]=equipment,["Worker:IntervalSeconds"]="5",
     ["Authentication:Credentials:0:Actor"]="demo-supervisor",["Authentication:Credentials:0:Secret"]=token,
-    ["Authentication:Credentials:0:Permissions"]="read,start,approve,verify,dispatch",["Authentication:Credentials:0:EquipmentIds"]=equipment,
+    ["Authentication:Credentials:0:Permissions"]="read,start,approve,verify,dispatch,ingest",["Authentication:Credentials:0:EquipmentIds"]=equipment,
     ["Authentication:Credentials:1:Actor"]="demo-technician",["Authentication:Credentials:1:Secret"]=technicianToken,
     ["Authentication:Credentials:1:Permissions"]="read,start",["Authentication:Credentials:1:EquipmentIds"]=equipment,
     ["Security:AllowedOrigins:0"]="http://127.0.0.1:4300",

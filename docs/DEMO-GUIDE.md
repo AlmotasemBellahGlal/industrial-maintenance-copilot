@@ -209,3 +209,36 @@ the legacy request-owned SSE endpoint; use `/api/jobs` for durable semantics.
 ## Additional FR-1 corpus proof
 
 The original bilingual pump/approval demo remains unchanged. The separate [synthetic assessment corpus](CORPUS-INGESTION.md) contains 31 documents and 150 actual PDF pages, ingested through the production stage/index pipeline with deterministic test embeddings. Run its `--ingest` twice and `--status` to demonstrate repeatability, Completed status and keyword/dense/hybrid citations. This does not expand the trusted safety-procedure catalog or imply full-stack Compose deployment.
+
+## Product Ask / ingestion — English
+
+Start the existing PostgreSQL + deterministic Demo API and frontend as above. Do not install models or supply paid-provider keys. The supervisor credential artifact now has explicit `ingest`; the technician credential retains read/start only. Never publish those local artifacts.
+
+1. Connect as supervisor and verify the header identity. Open **Ingest manual**.
+2. Use equipment `11111111-1111-1111-1111-111111111111`, generate two GUIDs for Document ID and Revision ID, enter a title/revision1 and select a supported text/PDF file. Save those IDs. Upload and inspect Completed plus page/chunk counts.
+3. Open **Ask with citations**, create a conversation using the same three IDs, and ask a term present in that source (e.g. `vibration`). Observe live deltas before completion and inspect the exact citation IDs/locator/snippet. Source excerpts are original text; generated answers are advisory.
+4. Ask `quasar astrophysics` against the pump source: InsufficientEvidence. Start another grounded question and Cancel answer: generation stops; refresh/select the conversation to inspect the cancelled turn. It has no completed partial answer.
+5. Reload, reconnect with the same credential and select the conversation: history returns. Restart the API, reconnect with its newly generated demo credential for the same actor, and inspect again. Completed history survives; interrupted turns expire to Failed after90seconds.
+6. Connect as technician: supervisor history is absent, ingestion is unavailable and approval/verification/dispatch controls are unavailable. Server-side requests remain forbidden. Technician can create its own Ask conversation on permitted equipment.
+7. Switch Arabic **before creating** a new conversation for Arabic answer context. Existing conversations preserve their culture. Deterministic demo emits a localized advisory frame and original source excerpts; it is a streaming test double, not translation/semantic-quality evidence.
+
+## تجربة المنتج — العربية
+
+شغّل PostgreSQL ومضيف Demo والواجهة بالطريقة الموضحة أعلاه. لا تحتاج إلى مفتاح مدفوع أو تنزيل نماذج.
+
+1. اتصل ببيانات المشرف المحلية، وتأكد من ظهور الهوية. افتح **إدخال دليل**.
+2. استخدم معرف المعدة التجريبية أعلاه، ومعرفَي GUID جديدين للمستند والإصدار. أدخل العنوان ورقم الإصدار واختر ملفًا نصيًا أو PDF لا يتجاوز16 ميجابايت. احتفظ بالمعرفات، ثم ارفع الملف وتأكد من حالة **مكتمل** والأعداد.
+3. اختر العربية ثم افتح **اسأل مع المراجع** وأنشئ محادثة بنفس المعرفات. اسأل عن كلمة موجودة في الدليل، مثل «اهتزاز» في مصدر عربي. راقب الإجابة التدريجية والمراجع الأصلية.
+4. السؤال غير المدعوم يُظهر أدلة غير كافية. زر **إلغاء الإجابة** يوقف توليد Ask. هذا مختلف عن فصل مراقبة وظيفة T7، التي تستمر حتى إلغاء صريح.
+5. أعد تحميل الصفحة، وأعد الاتصال بنفس الحساب ثم اختر المحادثة لاستعادة السجل. لا تُحفظ بيانات الدخول في المتصفح.
+6. جرّب حساب الفني: لا يمكنه قراءة محادثات المشرف أو رفع الأدلة أو تنفيذ إجراءات المشرف. يبقى اعتماد الإنسان والتحقق الإلزامي من السلامة شرطين مستقلين للتنفيذ.
+
+For automated proof, run `node tools/product-smoke.mjs` with the demo host running; `--verify-history` verifies the saved proof conversation after restarting that host. Browser journeys are `product-integration.spec.ts` with `DEMO_E2E=1`. Existing `tools/t7-smoke.mjs` remains the durable-disconnect/recovery and D5 regression.
+
+### Measured Issue #35 proof (2026-09-16)
+
+The deterministic real PostgreSQL/API proof produced seven provider deltas in each language. English deltas arrived at 229, 689, 791, 903, 1003, 1103 and 1255 ms; completion at 1413 ms. Arabic deltas arrived at 135, 586, 701, 800, 901, 1017 and 1167 ms; completion at 1317 ms. These are observations, not latency SLAs. The iterator processes evidence on demand and never calls a completed-answer method before streaming. OpenAI/Ollama protocol compatibility is covered by adapter tests; no paid/local model was invoked for this proof.
+
+Both uploaded revisions reached Completed; exact citations included `text:lines 1-5; scalars 1-193` and unchanged source excerpts. Unsupported questions produced InsufficientEvidence with zero answer deltas. Cancelling after the first delta caused the demo provider to log `cancelled=True; deltas=1` and persisted a Cancelled turn with no partial final answer. Restarting the API and running `--verify-history` preserved final answers and exact citations. The real Angular journeys passed in both languages; the existing approval/verification/dispatch browser journey also passed.
+
+Run live harnesses sequentially using the same demo identity: actor rate limits remain enabled. A 429 is not an approval/safety failure. The Node smoke helper honors bounded Retry-After only for explicit pre-execution rejection; the product does not silently retry Ask. The T7 harness separately proved observer disconnect, actual Worker termination/restart, replayed progress, explicit cancellation and six bilingual D5 approval/safety journeys.

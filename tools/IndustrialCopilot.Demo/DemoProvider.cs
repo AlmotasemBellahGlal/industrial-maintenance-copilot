@@ -48,5 +48,28 @@ internal sealed class DemoProvider(int delayMilliseconds=0) : ILlmProvider
             text.Contains("pump",StringComparison.OrdinalIgnoreCase)?1:0,0.1f}).ToArray(),"demo-test-v1"));
     }
     public Task<CompletionResponse> CompleteAsync(CompletionRequest request,CancellationToken ct)=>throw new NotSupportedException();
-    public IAsyncEnumerable<StreamingChunk> StreamAsync(CompletionRequest request,CancellationToken ct)=>throw new NotSupportedException();
+    public async IAsyncEnumerable<StreamingChunk> StreamAsync(CompletionRequest request,[System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        var emitted=0;
+        try
+        {
+        // Each source is processed on demand, never by splitting a completed generated answer.
+        using var input=JsonDocument.Parse(request.Messages.Last().Content);
+        var ar=request.Messages[0].Content.Contains("in Arabic",StringComparison.Ordinal);
+        emitted++; yield return new(ar?"معلومات استشارية من الدليل: ":"Advisory information from the manual: ",false);
+        foreach(var evidence in input.RootElement.GetProperty("evidence").EnumerateArray())
+        {
+            await Task.Delay(350,ct);
+            var snippet=evidence.GetProperty("Snippet").GetString()!;
+            foreach(var line in snippet.Split('\n',StringSplitOptions.RemoveEmptyEntries))
+            {
+                await Task.Delay(100,ct);
+                emitted++; yield return new(line+"\n",false);
+            }
+        }
+        await Task.Delay(150,ct);
+        emitted++; yield return new(ar?"لا يمثل هذا اعتمادًا للسلامة أو إذنًا بالتنفيذ.":"This is not safety approval or permission to execute.",true,new(10,20,30));
+        }
+        finally { Console.WriteLine($"DEMO Ask stream stopped: cancelled={ct.IsCancellationRequested}; deltas={emitted}"); }
+    }
 }

@@ -844,3 +844,16 @@ blockquote {
   direction: ltr;
   unicode-bidi: isolate;
 }
+
+.answer-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-inline-size: 75ch;
+}
+.history-choice {
+  display: block;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+  margin-block: 0.5rem;
+  text-align: start;
+}

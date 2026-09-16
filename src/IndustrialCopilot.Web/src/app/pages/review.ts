@@ -17,7 +17,7 @@ export class ReviewPage implements OnDestroy {
   private route = inject(ActivatedRoute);
   private api = inject(ReviewApi);
   private deliveries = inject(DispatchApi);
-  private session = inject(Session);
+  readonly session = inject(Session);
   private confirmation = viewChild(Confirm);
   private id = '';
   private generation = 0;

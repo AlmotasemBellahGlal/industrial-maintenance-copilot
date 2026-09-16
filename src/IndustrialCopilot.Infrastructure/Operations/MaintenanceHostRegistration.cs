@@ -1,3 +1,4 @@
+using IndustrialCopilot.Application.Ask;
 using IndustrialCopilot.Application.Abstractions.Jobs;
 using IndustrialCopilot.Application.Jobs;
 using System.Text.Json;
@@ -76,9 +77,15 @@ public static class MaintenanceHostRegistration
         services.AddSingleton<DispatchCoordinator>(); services.AddSingleton<ReconciliationBatch>(); services.AddSingleton<ExecutableReviewService>();
         services.AddSingleton<OperationalSchema>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<DispatchReceiverSchema>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("receiver")));
+        services.AddSingleton<IConversationStore>(p=>new PostgresConversationStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        services.AddSingleton<ProductCatalog>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        services.AddSingleton<IHistoryText>(new HistoryText(config));
         if(reasoning)
         {
             services.AddLlmProviders(config); services.AddKnowledgePipeline(config);
+            // Ask has its own host-authorized revision scope; it does not impersonate a specialist agent.
+            // Both adapters implement the same Application retrieval port.
+            services.AddSingleton<AskService>(p=>new(p.GetRequiredService<PostgresKnowledgeStore>(),p.GetRequiredService<IndustrialCopilot.Application.Abstractions.AI.ILlmProvider>()));
             services.AddSingleton<TrustedToolExecutor>(p=>new(p.GetRequiredService<PostgresKnowledgeStore>(),p.GetRequiredService<IEquipmentContextStore>(),safety,p.GetRequiredService<DispatchCoordinator>(),p.GetRequiredService<IActionAuthorization>(),p.GetRequiredService<IRunTraceStore>()));
             services.AddSingleton<IRetrievalService,TrustedRetrievalService>(); services.AddSingleton<MaintenanceOrchestrator>(); services.AddSingleton<ReasoningJobProcessor>();
         }

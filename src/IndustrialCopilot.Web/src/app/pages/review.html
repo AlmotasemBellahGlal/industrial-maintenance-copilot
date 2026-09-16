@@ -59,12 +59,12 @@
           </li>
         }
       </ol>
-      @if (r.status === 'Draft') {
+      @if (r.status === 'Draft' && session.can('start')) {
         <button class="primary" (click)="submit()" [disabled]="busy() || stale()">
           {{ 'Submit for supervisor review' | t }}
         </button>
       }
-      @if (r.status === 'PendingApproval' && !editing()) {
+      @if (r.status === 'PendingApproval' && !editing() && session.can('approve')) {
         <div class="actions">
           <button class="primary" (click)="decide('Approve')" [disabled]="busy() || stale()">
             {{ 'Approve revision' | t }} {{ r.target.revision }}</button
@@ -113,7 +113,10 @@
           </li>
         }
       </ul>
-      @if (r.status === 'Approved' || r.status === 'PendingApproval' || r.status === 'Draft') {
+      @if (
+        (r.status === 'Approved' || r.status === 'PendingApproval' || r.status === 'Draft') &&
+        session.can('verify')
+      ) {
         <details>
           <summary>{{ 'Record a human safety check' | t }}</summary>
           <p>
@@ -376,7 +379,7 @@
           | t
       }}
     </p>
-    @if (r.status === 'Approved') {
+    @if (r.status === 'Approved' && session.can('dispatch')) {
       <button
         class="primary"
         (click)="send()"

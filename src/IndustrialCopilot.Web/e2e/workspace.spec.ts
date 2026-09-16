@@ -48,6 +48,14 @@ async function credential(page: Page) {
   await page.getByRole('button', { name: 'Use credential', exact: true }).click();
   await expect(page.getByRole('status').first()).toContainText('Credential configured');
 }
+async function openReview(page: Page) {
+  await credential(page);
+  if (!(await page.getByRole('link', { name: 'Work orders', exact: true }).isVisible()))
+    await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+  await page.getByRole('link', { name: 'Work orders', exact: true }).click();
+  await page.getByLabel('Work orders ID').fill(orderId);
+  await page.getByRole('button', { name: 'Open record', exact: true }).click();
+}
 async function backend(page: Page) {
   let current = review();
   const requests: { path: string; body: Record<string, unknown> }[] = [];
@@ -56,6 +64,15 @@ async function backend(page: Page) {
       path = new URL(req.url()).pathname;
     const body = req.method() === 'POST' ? (req.postDataJSON() as Record<string, unknown>) : {};
     if (req.method() === 'POST') requests.push({ path, body });
+    if (path === '/api/identity')
+      return route.fulfill({
+        json: {
+          actor: 'test-supervisor',
+          role: 'Supervisor',
+          permissions: ['read', 'start', 'approve', 'verify', 'dispatch', 'ingest'],
+          equipmentIds: [orderId],
+        },
+      });
     if (path.endsWith('/evidence'))
       return route.fulfill({
         json: {
@@ -171,6 +188,8 @@ test('review, literal evidence, approval confirmation, verification and uncertai
 }) => {
   const requests = await backend(page);
   await credential(page);
+  if (!(await page.getByRole('link', { name: 'Work orders', exact: true }).isVisible()))
+    await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
   await page.getByRole('link', { name: 'Work orders', exact: true }).click();
   await page.getByLabel('Work orders ID').fill(orderId);
   await page.getByRole('button', { name: 'Open record', exact: true }).click();
@@ -210,7 +229,10 @@ test('review, literal evidence, approval confirmation, verification and uncertai
 });
 test('browser back dismisses confirmation without submitting a decision', async ({ page }) => {
   const requests = await backend(page);
-  await page.goto('/work-orders');
+  await credential(page);
+  if (!(await page.getByRole('link', { name: 'Work orders', exact: true }).isVisible()))
+    await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+  await page.getByRole('link', { name: 'Work orders', exact: true }).click();
   await page.getByLabel('Work orders ID').fill(orderId);
   await page.getByRole('button', { name: 'Open record', exact: true }).click();
   await page.getByRole('button', { name: 'Approve revision 2', exact: true }).click();
@@ -224,7 +246,7 @@ test('edited scope preview is invalidated on change and exact preview is echoed 
   page,
 }) => {
   const requests = await backend(page);
-  await page.goto('/work-orders/' + orderId);
+  await openReview(page);
   await page.getByRole('button', { name: 'Edit & approve', exact: true }).click();
   await page.getByLabel('Work order description', { exact: true }).fill('Final reviewed repair');
   await page.getByRole('button', { name: 'Assess edited scope', exact: true }).click();
@@ -247,7 +269,7 @@ test('stale decision pauses actions and offers reload rather than overwrite', as
   await page.route('**/decisions', (r) =>
     r.fulfill({ status: 409, json: { outcome: 'Conflict' } }),
   );
-  await page.goto('/work-orders/' + orderId);
+  await openReview(page);
   await page.getByRole('button', { name: 'Approve revision 2', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm approve' }).click();
   await expect(page.getByRole('alert').first()).toContainText('Review changed');
@@ -259,7 +281,7 @@ test('stale decision pauses actions and offers reload rather than overwrite', as
 });
 test('reject requires contextual confirmation and becomes terminal', async ({ page }) => {
   await backend(page);
-  await page.goto('/work-orders/' + orderId);
+  await openReview(page);
   await page.getByRole('button', { name: 'Reject', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('revision 2');
   await page.getByRole('button', { name: 'Confirm reject' }).click();
@@ -271,7 +293,7 @@ for (const status of [401, 403])
     await page.route('**/api/**', (r) =>
       r.fulfill({ status, json: { error: 'secret SQL stack' } }),
     );
-    await page.goto('/work-orders/' + orderId);
+    await openReview(page);
     await expect(page.getByRole('alert')).toContainText(
       status === 401 ? 'Authentication required' : 'Permission denied',
     );
@@ -334,7 +356,7 @@ for (const width of [375, 768, 1024, 1440])
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
       .analyze();
     expect(results.violations).toEqual([]);
-    await page.goto('/work-orders/' + orderId);
+    await openReview(page);
     await expect(page.locator('blockquote')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
@@ -390,7 +412,7 @@ test('Arabic approval dialog keeps keyboard cancellation and source scope intact
   page,
 }) => {
   await backend(page);
-  await page.goto('/work-orders/' + orderId);
+  await openReview(page);
   await page.getByRole('button', { name: 'العربية', exact: true }).click();
   const approve = page.getByRole('button', { name: /^الموافقة على الإصدار/ });
   await approve.click();
@@ -417,7 +439,7 @@ test('reduced-motion mobile navigation and confirmation retain accessible focus'
   await page.setViewportSize({ width: 375, height: 812 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await backend(page);
-  await page.goto('/work-orders/' + orderId);
+  await openReview(page);
   const nav = page.getByRole('button', { name: 'Open navigation' });
   await nav.click();
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible();

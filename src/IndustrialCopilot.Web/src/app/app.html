@@ -52,6 +52,11 @@
   </aside>
   <div class="workspace">
     <header class="topbar">
+      @if (session.identity(); as identity) {
+        <span
+          >{{ identity.role | t }} · <bdi>{{ identity.actor }}</bdi></span
+        >
+      }
       <div class="language-switch" role="group" aria-label="English / العربية">
         <button
           type="button"
