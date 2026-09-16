@@ -66,6 +66,8 @@ export interface Run {
   executionIds: string[];
 }
 export interface WorkflowResult {
+  degradationReason?: string | null;
+  citations?: Citation[] | null;
   narrative?: string | null;
   runId: string;
   workOrderId: string | null;

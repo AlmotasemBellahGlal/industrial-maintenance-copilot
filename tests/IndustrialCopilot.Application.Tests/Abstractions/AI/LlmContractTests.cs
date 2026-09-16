@@ -175,9 +175,9 @@ public class LlmContractTests
         _ = new ToolCompletionResponse("", [Call()], Usage());
         _ = new StreamingChunk("", true, Usage());
         Assert.Throws<ArgumentNullException>(() => new CompletionResponse(null!, Usage()));
-        Assert.Throws<ArgumentNullException>(() => new CompletionResponse("", null!));
+        Assert.Null(new CompletionResponse("", null).Usage);
         Assert.Throws<ArgumentNullException>(() => new ToolCompletionResponse(null!, [], Usage()));
-        Assert.Throws<ArgumentNullException>(() => new ToolCompletionResponse("", [], null!));
+        Assert.Null(new ToolCompletionResponse("", [], null).Usage);
         Assert.Throws<ArgumentNullException>(() => new LlmMessage(LlmRole.User, null!));
         Assert.Throws<ArgumentNullException>(() => new ToolDefinition("inspect", null!, ObjectJson()));
         Assert.Throws<ArgumentNullException>(() => new StreamingChunk(null!, false));

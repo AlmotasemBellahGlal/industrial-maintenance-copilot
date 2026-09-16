@@ -1,3 +1,4 @@
+using IndustrialCopilot.Application.Ask;
 using IndustrialCopilot.Application.Abstractions.Approval.Models;
 using IndustrialCopilot.Domain.WorkOrders;
 using IndustrialCopilot.Domain.WorkOrders.Safety;
@@ -33,9 +34,9 @@ public sealed record ReviewResponse(Guid WorkOrderId,TargetRequest Target,Conten
         s.SafetyPrerequisites.Select(p=>new RequirementResponse(p.Id,p.Description,p.IsMandatory,p.Status.ToString(),p.Verification?.VerifiedBy,p.Verification?.Evidence)).ToArray(),s.LatestDecision?.Kind.ToString());
 }
 public sealed record RunResponse(Guid RunId,Guid EquipmentId,string Symptom,string Status,bool CancellationRequested,IReadOnlyList<Guid> WorkOrderIds,IReadOnlyList<Guid> ExecutionIds);
-public sealed record WorkflowResponse(Guid RunId,Guid? WorkOrderId,Guid ExecutionId,Guid CorrelationId,string Outcome,string? Narrative=null);
+public sealed record WorkflowResponse(Guid RunId,Guid? WorkOrderId,Guid ExecutionId,Guid CorrelationId,string Outcome,string? Narrative=null,string? DegradationReason=null,IReadOnlyList<AskCitation>? Citations=null);
 public sealed record DispatchResponse(Guid? AttemptId,Guid? WorkOrderId,int? Revision,string Outcome,string? State,string? ExternalReference,string? Failure);
-public sealed record TraceStepResponse(string Kind,string Name,string Status,string? Error,DateTimeOffset StartedAt,DateTimeOffset? CompletedAt);
+public sealed record TraceStepResponse(string Kind,string Name,string Status,string? Error,DateTimeOffset StartedAt,DateTimeOffset? CompletedAt,Guid StepId,Guid? ParentStepId);
 public sealed record TraceResponse(Guid ExecutionId,Guid CorrelationId,Guid? RunId,IReadOnlyList<TraceStepResponse> Steps);
 public sealed class ApiProblemException(int status,string code) : Exception(code) {public int Status {get;}=status; public string Code {get;}=code;}
 public static class HttpValidation

@@ -167,3 +167,43 @@ describe('Session and required values', () => {
     expect(guid(new FormControl(id))).toBeNull();
   });
 });
+
+it('preserves exact fallback citations and structured retry observations', () => {
+  const result = decodeEvent(
+    'Result',
+    JSON.stringify({
+      RunId: id,
+      ExecutionId: id,
+      CorrelationId: id,
+      Outcome: 'Degraded',
+      WorkOrderId: null,
+      Narrative: 'advisory',
+      DegradationReason: 'transient_exhausted',
+      Citations: [
+        {
+          DocumentId: id,
+          ManualRevisionId: id,
+          ChunkId: id,
+          Locator: 'section 2',
+          Snippet: 'source verbatim',
+        },
+      ],
+    }),
+  );
+  expect(result?.type).toBe('result');
+  if (result?.type === 'result') {
+    expect(result.value.citations?.[0].snippet).toBe('source verbatim');
+    expect(result.value.degradationReason).toBe('transient_exhausted');
+    expect(result.value.workOrderId).toBeNull();
+  }
+  const retry = decodeEvent(
+    'RetryScheduled',
+    JSON.stringify({
+      ExecutionId: id,
+      CorrelationId: id,
+      progress: { Kind: 9, RunId: id, Attempt: 2, ReasonCode: 'transient_dependency' },
+    }),
+  );
+  expect(retry?.type).toBe('progress');
+  if (retry?.type === 'progress') expect(retry.value.attempt).toBe(2);
+});

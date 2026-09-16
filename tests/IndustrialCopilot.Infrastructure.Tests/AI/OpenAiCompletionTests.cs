@@ -39,19 +39,26 @@ public class OpenAiCompletionTests
     }
 
     [Theory]
-    [InlineData(null)]
-    [InlineData("null")]
     [InlineData("{}")]
     [InlineData("{\"prompt_tokens\":-1,\"completion_tokens\":2,\"total_tokens\":1}")]
     [InlineData("{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":9}")]
     [InlineData("{\"prompt_tokens\":2147483647,\"completion_tokens\":2,\"total_tokens\":1}")]
-    public async Task RejectsMissingOrMalformedRequiredUsage(string? usage)
+    public async Task RejectsMalformedSuppliedUsage(string? usage)
     {
         var json = JsonNode.Parse(Fixtures.Completion)!;
         if (usage is null) json.AsObject().Remove("usage"); else json["usage"] = JsonNode.Parse(usage);
         using var provider = new OpenAiLlmProvider(Fixtures.Options(), Fixtures.Handler(json.ToJsonString()));
         var error = await Assert.ThrowsAsync<LlmProviderException>(() => provider.CompleteAsync(Fixtures.Query, default));
         Assert.Equal(LlmProviderFailureKind.InvalidResponse, error.Kind);
+    }
+
+    [Theory][InlineData(null)][InlineData("null")]
+    public async Task MissingUsageRemainsUnknown(string? usage)
+    {
+        var json=JsonNode.Parse(Fixtures.Completion)!;
+        if(usage is null)json.AsObject().Remove("usage");else json["usage"]=JsonNode.Parse(usage);
+        using var provider=new OpenAiLlmProvider(Fixtures.Options(),Fixtures.Handler(json.ToJsonString()));
+        Assert.Null((await provider.CompleteAsync(Fixtures.Query,default)).Usage);
     }
 
     internal static string ToolsResponse(string arguments = "{\"page\":7}")

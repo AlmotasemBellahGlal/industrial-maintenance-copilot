@@ -88,7 +88,7 @@ import { focusInvalid, guid, requiredText, Status } from '../shared/ui';
         <p role="status">{{ message() | t }}</p>
         @if (events().length) {
           <ol class="timeline">
-            @for (event of events(); track event.kind + ':' + event.role) {
+            @for (event of events(); track event.kind + ':' + event.role + ':' + event.attempt) {
               <li>
                 <strong>{{ label(event) | t }}</strong
                 ><span class="muted">{{ event.kind }}</span>
@@ -99,6 +99,24 @@ import { focusInvalid, guid, requiredText, Status } from '../shared/ui';
           <div class="empty">
             <p>{{ 'Progress will appear when the host starts the workflow.' | t }}</p>
           </div>
+        }
+        @if (result()?.degradationReason) {
+          <div class="notice" role="status">
+            <strong>{{ 'Grounded fallback — no work order created' | t }}</strong>
+            <p>{{ result()!.degradationReason! | t }}</p>
+            <p>
+              {{ 'This advisory answer grants no safety approval or dispatch permission.' | t }}
+            </p>
+          </div>
+        }
+        @for (citation of result()?.citations ?? []; track citation.chunkId) {
+          <details>
+            <summary dir="auto">{{ citation.locator }}</summary>
+            <p class="identifier">
+              {{ citation.documentId }} / {{ citation.manualRevisionId }} / {{ citation.chunkId }}
+            </p>
+            <blockquote dir="auto">{{ citation.snippet }}</blockquote>
+          </details>
         }
         @if (result()?.narrative) {
           <aside class="notice">
@@ -195,7 +213,12 @@ export class Diagnosis implements OnDestroy {
         this.session.remember('work-orders', v.workOrderId, 'Proposal — review required');
     } else {
       this.events.update((items) =>
-        items.some((i) => i.kind === event.value.kind && i.role === event.value.role)
+        items.some(
+          (i) =>
+            i.kind === event.value.kind &&
+            i.role === event.value.role &&
+            i.attempt === event.value.attempt,
+        )
           ? items
           : [...items, event.value].slice(-100),
       );
@@ -204,6 +227,9 @@ export class Diagnosis implements OnDestroy {
     }
   }
   label(e: Progress): UiText {
+    if (e.kind === 'RetryScheduled') return phrase('Retry scheduled: attempt {0}', e.attempt ?? 0);
+    if (e.kind === 'FallbackStarted') return 'Grounded fallback started';
+    if (e.kind === 'FallbackCompleted') return 'Grounded fallback completed';
     const roles: Record<number, string> = {
       1: 'Symptom Matcher',
       2: 'Diagnostic & Safety Planner',

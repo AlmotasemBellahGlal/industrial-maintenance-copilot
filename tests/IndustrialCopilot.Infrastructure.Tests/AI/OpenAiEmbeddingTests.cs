@@ -20,6 +20,7 @@ public class OpenAiEmbeddingTests
         Assert.Equal(new float[] { 1, 2 }, result.Vectors[0]);
         Assert.Equal(new float[] { 3, 4 }, result.Vectors[1]);
         Assert.Equal("actual-embedding", result.Model);
+        Assert.Null(result.Usage);
     }
 
     [Theory]
@@ -36,5 +37,13 @@ public class OpenAiEmbeddingTests
         using var provider = new OpenAiLlmProvider(Fixtures.Options(), Fixtures.Handler("{\"model\":\"embed\",\"data\":" + data + "}"));
         var error = await Assert.ThrowsAsync<LlmProviderException>(() => provider.GenerateEmbeddingsAsync(Request, default));
         Assert.Equal(LlmProviderFailureKind.InvalidResponse, error.Kind);
+    }
+    [Theory][InlineData(7,7,true)][InlineData(-1,-1,false)][InlineData(7,8,false)]
+    public async Task MapsOnlyValidSuppliedEmbeddingUsage(int prompt,int total,bool valid)
+    {
+        var json=System.Text.Json.JsonSerializer.Serialize(new{model="embed",data=new[]{new{index=0,embedding=new[]{1f}}},usage=new{prompt_tokens=prompt,total_tokens=total}});
+        using var provider=new OpenAiLlmProvider(Fixtures.Options(),Fixtures.Handler(json));
+        if(valid)Assert.Equal(new TokenUsage(7,0,7),(await provider.GenerateEmbeddingsAsync(new(["one"]),default)).Usage);
+        else Assert.Equal(LlmProviderFailureKind.InvalidResponse,(await Assert.ThrowsAsync<LlmProviderException>(()=>provider.GenerateEmbeddingsAsync(new(["one"]),default))).Kind);
     }
 }

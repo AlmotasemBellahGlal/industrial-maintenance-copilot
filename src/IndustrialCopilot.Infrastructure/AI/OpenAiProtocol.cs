@@ -92,7 +92,7 @@ internal static class OpenAiProtocol
         var content = message.GetProperty("content");
         var text = content.ValueKind == JsonValueKind.Null && calls.Count > 0 ? "" : content.GetString();
         if (text is null) throw Invalid();
-        return new(text, calls, Usage(root.GetProperty("usage")), RequiredText(root, "model"));
+        return new(text, calls, root.TryGetProperty("usage",out var usage) && usage.ValueKind!=JsonValueKind.Null?Usage(usage):null, RequiredText(root, "model"));
     }
 
     internal static EmbeddingResult Embeddings(JsonElement root, int count)
@@ -111,7 +111,13 @@ internal static class OpenAiProtocol
             vectors[index] = vector;
         }
         if (vectors.Any(vector => vector is null)) throw Invalid();
-        return new(vectors, RequiredText(root, "model"));
+        TokenUsage? tokens=null;
+        if(root.TryGetProperty("usage",out var usage) && usage.ValueKind!=JsonValueKind.Null)
+        {
+            var prompt=usage.GetProperty("prompt_tokens").GetInt32();var total=usage.GetProperty("total_tokens").GetInt32();
+            if(prompt!=total || prompt<0)throw Invalid();tokens=new(prompt,0,total);
+        }
+        return new(vectors, RequiredText(root, "model"),tokens);
     }
 
     internal static JsonElement SingleChoice(JsonElement root)

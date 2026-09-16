@@ -1,3 +1,5 @@
+using System.Globalization;
+using IndustrialCopilot.Application.Abstractions.Usage;
 using IndustrialCopilot.Application.Ask;
 using IndustrialCopilot.Application.Abstractions.Jobs;
 using IndustrialCopilot.Application.Jobs;
@@ -80,12 +82,27 @@ public static class MaintenanceHostRegistration
         services.AddSingleton<IConversationStore>(p=>new PostgresConversationStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<ProductCatalog>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<IHistoryText>(new HistoryText(config));
+        services.AddSingleton<ILlmUsageStore>(p=>new PostgresLlmUsageStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        try
+        {
+            var prices=config.GetSection("Usage:Prices").GetChildren().Select(p=>new UsagePrice(
+                p["Provider"]!,p["Model"]!,p["Currency"]!,p["Version"]!,DateTimeOffset.Parse(p["EffectiveFrom"]!,CultureInfo.InvariantCulture),
+                long.Parse(p["TokensPerUnit"]!,CultureInfo.InvariantCulture),decimal.Parse(p["InputRate"]!,CultureInfo.InvariantCulture),decimal.Parse(p["OutputRate"]!,CultureInfo.InvariantCulture))).ToArray();
+            services.AddSingleton(new UsagePricing(prices));
+            int Setting(string name,int fallback)=>config["Reasoning:"+name] is {} value?int.Parse(value,CultureInfo.InvariantCulture):fallback;
+            services.AddSingleton(new ReasoningLimits(Setting("ModelTurns",4),Setting("ToolCalls",4),Setting("TopK",5),
+                TimeSpan.FromSeconds(Setting("AgentTimeoutSeconds",60)),Setting("Attempts",2),
+                TimeSpan.FromMilliseconds(Setting("RetryDelayMilliseconds",250)),TimeSpan.FromSeconds(Setting("FallbackTimeoutSeconds",15))));
+        }
+        catch(Exception error) when(error is ArgumentException or FormatException or OverflowException)
+        {throw new InvalidOperationException("Invalid reasoning or usage pricing configuration.");}
         if(reasoning)
         {
             services.AddLlmProviders(config); services.AddKnowledgePipeline(config);
             // Ask has its own host-authorized revision scope; it does not impersonate a specialist agent.
             // Both adapters implement the same Application retrieval port.
             services.AddSingleton<AskService>(p=>new(p.GetRequiredService<PostgresKnowledgeStore>(),p.GetRequiredService<IndustrialCopilot.Application.Abstractions.AI.ILlmProvider>()));
+            services.AddSingleton<IPlainRagFallback,PlainRagFallback>();
             services.AddSingleton<TrustedToolExecutor>(p=>new(p.GetRequiredService<PostgresKnowledgeStore>(),p.GetRequiredService<IEquipmentContextStore>(),safety,p.GetRequiredService<DispatchCoordinator>(),p.GetRequiredService<IActionAuthorization>(),p.GetRequiredService<IRunTraceStore>()));
             services.AddSingleton<IRetrievalService,TrustedRetrievalService>(); services.AddSingleton<MaintenanceOrchestrator>(); services.AddSingleton<ReasoningJobProcessor>();
         }

@@ -111,4 +111,12 @@ public class OllamaProviderTests
         Assert.Equal(LlmProviderFailureKind.InvalidRequest, error.Kind);
         Assert.DoesNotContain("private", error.ToString());
     }
+    [Theory][InlineData(7)][InlineData(-1)]
+    public async Task NativeEmbeddingUsageMapsInputOnlyOrRejectsNegative(int count)
+    {
+        var json=JsonSerializer.Serialize(new{model="embed",embeddings=new[]{new[]{1f}},prompt_eval_count=count});
+        using var provider=new OllamaLlmProvider(Options,Fixtures.Handler(json));
+        if(count>=0)Assert.Equal(new TokenUsage(count,0,count),(await provider.GenerateEmbeddingsAsync(new(["one"]),default)).Usage);
+        else Assert.Equal(LlmProviderFailureKind.InvalidResponse,(await Assert.ThrowsAsync<LlmProviderException>(()=>provider.GenerateEmbeddingsAsync(new(["one"]),default))).Kind);
+    }
 }

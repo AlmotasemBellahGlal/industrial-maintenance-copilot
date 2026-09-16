@@ -27,7 +27,7 @@ public static class MaintenanceEndpoints
         {
             var input=await Prepare(request,c); var result=await Service<MaintenanceOrchestrator>(c).ExecuteAsync(input,c.RequestAborted);
             c.Response.Headers.Location="/api/runs/"+result.RunId;
-            return Results.Json(new WorkflowResponse(result.RunId,result.WorkOrderId,input.ExecutionId,input.CorrelationId,result.Outcome.ToString(),result.Narrative),statusCode:result.Outcome switch{MaintenanceReasoningOutcome.Proposed=>201,MaintenanceReasoningOutcome.Conflict=>409,MaintenanceReasoningOutcome.TimedOut=>504,MaintenanceReasoningOutcome.Failed=>503,_=>422});
+            return Results.Json(new WorkflowResponse(result.RunId,result.WorkOrderId,input.ExecutionId,input.CorrelationId,result.Outcome.ToString(),result.Narrative,result.DegradationReason,result.Citations),statusCode:result.Outcome switch{MaintenanceReasoningOutcome.Proposed=>201,MaintenanceReasoningOutcome.Degraded or MaintenanceReasoningOutcome.DegradedRefused=>200,MaintenanceReasoningOutcome.Conflict=>409,MaintenanceReasoningOutcome.TimedOut=>504,MaintenanceReasoningOutcome.Failed=>503,_=>422});
         });
         routes.MapPost("/runs/stream",Stream).Produces(200,contentType:"text/event-stream");
         routes.MapGet("/runs/{id:guid}",async(Guid id,HttpContext c)=>
@@ -82,7 +82,7 @@ public static class MaintenanceEndpoints
         routes.MapGet("/traces/{id:guid}",async(Guid id,HttpContext c)=>
         {
             var trace=await Service<IRunTraceStore>(c).GetAsync(id,c.RequestAborted)??throw new ApiProblemException(404,"not_found");
-            return new TraceResponse(trace.ExecutionId,trace.CorrelationId,trace.MaintenanceRunId,trace.Steps.Take(512).Select(s=>new TraceStepResponse(s.Kind.ToString(),s.OperationName,s.Status.ToString(),s.Error?.Code,s.StartedAt,s.CompletedAt)).ToArray());
+            return new TraceResponse(trace.ExecutionId,trace.CorrelationId,trace.MaintenanceRunId,trace.Steps.Take(512).Select(s=>new TraceStepResponse(s.Kind.ToString(),s.OperationName,s.Status.ToString(),s.Error?.Code,s.StartedAt,s.CompletedAt,s.StepId,s.ParentStepId)).ToArray());
         });
     }
     private static IResult Approval(ApprovalOperationResult result)=>Results.Json(new {outcome=result.Outcome.ToString(),review=result.Snapshot is {} s?ReviewResponse.From(s):null},statusCode:result.Outcome switch{ApprovalOperationOutcome.Applied=>200,ApprovalOperationOutcome.Forbidden=>403,ApprovalOperationOutcome.NotFound=>404,ApprovalOperationOutcome.Conflict or ApprovalOperationOutcome.InvalidState=>409,_=>422});
@@ -117,7 +117,7 @@ public static class MaintenanceEndpoints
         {
             await foreach(var progress in channel.Reader.ReadAllAsync(c.RequestAborted))
                 await Write(progress.Kind.ToString(),new {input.CorrelationId,input.ExecutionId,progress});
-            if(result is not null)await Write("Result",new WorkflowResponse(result.RunId,result.WorkOrderId,input.ExecutionId,input.CorrelationId,result.Outcome.ToString(),result.Narrative));
+            if(result is not null)await Write("Result",new WorkflowResponse(result.RunId,result.WorkOrderId,input.ExecutionId,input.CorrelationId,result.Outcome.ToString(),result.Narrative,result.DegradationReason,result.Citations));
         }
         finally{lifetime.Cancel();await producer;}
         async Task Write(string kind,object value)

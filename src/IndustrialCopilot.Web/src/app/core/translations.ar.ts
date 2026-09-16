@@ -1,5 +1,17 @@
 // English source keys provide deterministic fallback. Never translate source evidence or identifiers.
 export const arabic: Readonly<Record<string, string>> = {
+  'Grounded fallback — no work order created': 'إجابة بديلة مستندة إلى الأدلة — لم يُنشأ أمر عمل',
+  'This advisory answer grants no safety approval or dispatch permission.':
+    'هذه إجابة استشارية لا تمنح اعتماد سلامة أو إذن إرسال.',
+  'Grounded fallback started': 'بدأت الإجابة البديلة المستندة إلى الأدلة',
+  'Grounded fallback completed': 'اكتملت الإجابة البديلة المستندة إلى الأدلة',
+  'Retry scheduled: attempt {0}': 'إعادة المحاولة مجدولة: المحاولة {0}',
+  transient_exhausted: 'استُنفدت محاولات معالجة العطل المؤقت',
+  agent_timeout: 'انتهت مهلة الوكيل',
+  provider_timeout: 'انتهت مهلة المزوّد',
+  Degraded: 'إجابة بديلة استشارية',
+  DegradedRefused: 'الأدلة لا تكفي لإجابة بديلة',
+
   'Proposal — review required': 'مقترح — تلزم المراجعة',
   TimedOut: 'انتهت المهلة',
   Conflict: 'تعارض',

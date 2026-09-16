@@ -126,7 +126,7 @@ public sealed class PostgresKnowledgeStore(NpgsqlDataSource dataSource, Knowledg
             return mode switch { RetrievalMode.Keyword => keyword, RetrievalMode.Dense => dense, _ => ReciprocalRankFusion.Combine(keyword, dense, query.TopK) };
         }
         catch (Exception error) when (error is NpgsqlException or TimeoutException or IOException)
-        { cancellationToken.ThrowIfCancellationRequested(); throw new KnowledgeStoreException(KnowledgeFailure.StorageUnavailable); }
+        { cancellationToken.ThrowIfCancellationRequested(); throw new KnowledgeStoreException(KnowledgeFailure.StorageUnavailable,error is NpgsqlException {IsTransient:true} ? IndustrialCopilot.Application.Abstractions.AI.DependencyFailureKind.Transient : error is TimeoutException ? IndustrialCopilot.Application.Abstractions.AI.DependencyFailureKind.Timeout : IndustrialCopilot.Application.Abstractions.AI.DependencyFailureKind.Terminal); }
     }
 
     private async Task<bool> CheckSpaceAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken token)

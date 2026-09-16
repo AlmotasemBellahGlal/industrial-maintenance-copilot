@@ -1,3 +1,4 @@
+using IndustrialCopilot.Application.Abstractions.AI;
 using System.Text.Json;
 using IndustrialCopilot.Application.Abstractions.AI.Models;
 using IndustrialCopilot.Application.Abstractions.Retrieval;
@@ -17,6 +18,8 @@ public sealed class TrustedRetrievalService(TrustedToolExecutor executor,ITruste
         if(query.DocumentId is null || query.ManualRevisionId is null || !Enum.IsDefined(mode)) throw new ArgumentException("Scoped retrieval required.");
         var arguments=JsonSerializer.SerializeToElement(new {query=query.QueryText,topK=query.TopK,documentId=query.DocumentId,manualRevisionId=query.ManualRevisionId,mode=mode.ToString()});
         var result=await executor.ExecuteAsync(new ToolCall(Guid.NewGuid().ToString("D"),"retrieve_manual_evidence",arguments),context.Current,ct);
+        if(result.Outcome==ToolExecutionOutcome.Forbidden)throw new UnauthorizedAccessException();
+        if(result.Failure is {} failure)throw new DependencyFailureException(failure);
         return result.Outcome==ToolExecutionOutcome.Completed && result.Evidence is not null ? result.Evidence
             : throw new InvalidOperationException("Trusted retrieval unavailable.");
     }

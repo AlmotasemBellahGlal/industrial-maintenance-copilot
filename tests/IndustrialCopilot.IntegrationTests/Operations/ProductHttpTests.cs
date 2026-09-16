@@ -4,6 +4,9 @@ using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using IndustrialCopilot.Api;
+using IndustrialCopilot.Application.Reasoning;
+using IndustrialCopilot.Application.Abstractions.Usage;
+using IndustrialCopilot.Infrastructure.AI;
 using IndustrialCopilot.Application.Ask;
 using IndustrialCopilot.Application.Abstractions.AI;
 using IndustrialCopilot.Application.Abstractions.AI.Models;
@@ -24,7 +27,7 @@ public class ProductHttpTests(KnowledgeDatabase database):IClassFixture<Knowledg
 {
     private sealed class Provider:ILlmProvider
     {
-        public bool Wait,Fail;public readonly TaskCompletionSource Stopped=new(TaskCreationOptions.RunContinuationsAsynchronously);public bool Cancelled;
+        public bool Wait,Fail;public bool FailTools;public int ToolCalls;public readonly TaskCompletionSource Stopped=new(TaskCreationOptions.RunContinuationsAsynchronously);public bool Cancelled;
         public async IAsyncEnumerable<StreamingChunk> StreamAsync(CompletionRequest r,[EnumeratorCancellation]CancellationToken ct)
         {
             try{yield return new("first ",false);await Task.Delay(Wait?Timeout.Infinite:20,ct);if(Fail)throw new InvalidOperationException("PRIVATE PROVIDER DATA");yield return new("second",true);}
@@ -32,7 +35,7 @@ public class ProductHttpTests(KnowledgeDatabase database):IClassFixture<Knowledg
         }
         public Task<EmbeddingResult> GenerateEmbeddingsAsync(EmbeddingRequest r,CancellationToken ct)=>Task.FromResult(new EmbeddingResult(r.Inputs.Select(_=>(IReadOnlyList<float>)new float[]{1,0}).ToArray(),"test-model"));
         public Task<CompletionResponse> CompleteAsync(CompletionRequest r,CancellationToken ct)=>throw new NotSupportedException();
-        public Task<ToolCompletionResponse> CompleteWithToolsAsync(CompletionRequest r,IReadOnlyList<ToolDefinition> t,CancellationToken ct)=>throw new NotSupportedException();
+        public Task<ToolCompletionResponse> CompleteWithToolsAsync(CompletionRequest r,IReadOnlyList<ToolDefinition> t,CancellationToken ct){ToolCalls++;throw FailTools?new DependencyFailureException(DependencyFailureKind.Transient):new NotSupportedException();}
     }
     private async Task Run(Func<HttpClient,IServiceProvider,Provider,Guid,Task> test,int timeout=60,int permits=30)
     {
@@ -48,7 +51,7 @@ public class ProductHttpTests(KnowledgeDatabase database):IClassFixture<Knowledg
                     ["Llm:Ollama:RequestTimeoutSeconds"]="30",["Llm:Ollama:StreamTimeoutSeconds"]="60",["Llm:PrimaryProvider"]="Ollama",["Llm:EmbeddingProvider"]="Ollama",["Llm:FallbackEnabled"]="false",["Llm:Ollama:Endpoint"]="http://127.0.0.1:11434/",["Llm:Ollama:ChatModel"]="test-model",["Llm:Ollama:EmbeddingModel"]="test-model",
                     ["Knowledge:EmbeddingProfile"]="test-v1",["Knowledge:EmbeddingRevision"]="test",["Knowledge:Dimensions"]="2"});
                 b.Services.AddMaintenanceHost(b.Configuration,()=>HostAuthentication.Identity(new HttpContextAccessor().HttpContext),true);
-                b.Services.Replace(ServiceDescriptor.Singleton<ILlmProvider>(provider));
+                b.Services.Replace(ServiceDescriptor.Singleton<ILlmProvider>(s=>new AccountedLlmProvider(provider,s.GetRequiredService<ILlmUsageStore>(),new(),"Test","test-model","test-model",BillingKind.Synthetic)));
             });
             await MaintenanceHostRegistration.MigrateAsync(app.Services,true,default);await app.StartAsync();
             using var client=new HttpClient{BaseAddress=new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()),Timeout=TimeSpan.FromSeconds(20)};
@@ -65,6 +68,32 @@ public class ProductHttpTests(KnowledgeDatabase database):IClassFixture<Knowledg
         var create=await client.PostAsJsonAsync("/api/conversations",new{equipmentId=equipment,documentId=document,manualRevisionId=revision});Assert.Equal(HttpStatusCode.OK,create.StatusCode);
         return (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
     }
+    [PostgresFact]public async Task RealHttpTransientExhaustionProducesGroundedAdvisoryFallbackAndCorrelatedUsage()=>await Run(async(client,services,provider,equipment)=>{
+        var candidate=services.GetRequiredService<IReadOnlyList<ApprovedMaintenanceProcedure>>().Single().Candidate;
+        using var content=new StringContent("Pump vibration requires inspection. Exact manual evidence.");content.Headers.ContentType=new("text/plain");
+        var ingest=await client.PostAsync($"/api/documents/{candidate.DocumentId}/revisions/{candidate.ManualRevisionId}/ingest?equipmentId={equipment}&filename=pump.txt&title=Pump&revisionNumber=1",content);Assert.Equal(HttpStatusCode.OK,ingest.StatusCode);
+        provider.FailTools=true;var correlation=Guid.NewGuid();client.DefaultRequestHeaders.Add("X-Correlation-ID",correlation.ToString());
+        var response=await client.PostAsJsonAsync("/api/runs",new{equipmentId=equipment,symptom="pump vibration"});Assert.Equal(HttpStatusCode.OK,response.StatusCode);
+        var result=await response.Content.ReadFromJsonAsync<JsonElement>();Assert.Equal("Degraded",result.GetProperty("outcome").GetString());Assert.Equal(JsonValueKind.Null,result.GetProperty("workOrderId").ValueKind);Assert.Equal("transient_exhausted",result.GetProperty("degradationReason").GetString());
+        var citation=Assert.Single(result.GetProperty("citations").EnumerateArray());Assert.Equal(candidate.DocumentId,citation.GetProperty("documentId").GetGuid());Assert.Equal(candidate.ManualRevisionId,citation.GetProperty("manualRevisionId").GetGuid());Assert.Contains("Exact manual evidence.",citation.GetProperty("snippet").GetString());
+        Assert.Equal(2,provider.ToolCalls);
+        var usage=(await client.GetFromJsonAsync<UsagePage>($"/api/usage?correlationId={correlation}"))!;
+        Assert.Equal(2,usage.Records.Count(r=>r.Operation==LlmOperation.ToolCompletion));Assert.Contains(usage.Records,r=>r.Context.Purpose==UsagePurpose.GroundedFallback && r.Operation==LlmOperation.Streaming);
+        Assert.All(usage.Records,r=>{Assert.Equal(result.GetProperty("runId").GetGuid(),r.Context.RunId);Assert.NotNull(r.Context.StepId);Assert.Null(r.EstimatedCost);});
+        var trace=await client.GetFromJsonAsync<JsonElement>($"/api/traces/{result.GetProperty("executionId").GetGuid()}");
+        var stepIds=trace.GetProperty("steps").EnumerateArray().Select(x=>x.GetProperty("stepId").GetGuid()).ToHashSet();
+        Assert.All(usage.Records,r=>Assert.Contains(r.Context.StepId!.Value,stepIds));
+    });
+    [PostgresFact]public async Task UsageApiPersistsScopedCallsAndRejectsAnonymousAccess()=>await Run(async(client,services,provider,equipment)=>{
+        var id=await IngestAndCreate(client,equipment);var correlation=Guid.NewGuid();client.DefaultRequestHeaders.Add("X-Correlation-ID",correlation.ToString());
+        await client.PostAsJsonAsync($"/api/conversations/{id}/ask",new{question="pump"});
+        var page=await client.GetFromJsonAsync<UsagePage>($"/api/usage?correlationId={correlation}");
+        Assert.NotNull(page);Assert.NotEmpty(page.Records);Assert.Contains(page.Records,r=>r.Operation==LlmOperation.Streaming && r.Status==UsageStatus.Succeeded);
+        Assert.All(page.Records,r=>{Assert.Equal("owner",r.Context.Actor);Assert.Equal(equipment,r.Context.EquipmentId);Assert.Null(r.Tokens);Assert.Null(r.EstimatedCost);});
+        Assert.Equal(HttpStatusCode.BadRequest,(await client.GetAsync("/api/usage?limit=101")).StatusCode);
+        client.DefaultRequestHeaders.Authorization=new("Bearer",new string('b',32));Assert.Empty((await client.GetFromJsonAsync<UsagePage>($"/api/usage?correlationId={correlation}"))!.Records);
+        client.DefaultRequestHeaders.Authorization=null;Assert.Equal(HttpStatusCode.Unauthorized,(await client.GetAsync("/api/usage")).StatusCode);
+    });
     [PostgresFact]public async Task RealHttpIngestionAskHistoryOwnerIsolationAndSafeErrors()=>await Run(async(client,services,provider,equipment)=>{
         client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("ar-EG");var id=await IngestAndCreate(client,equipment);
         var response=await client.PostAsJsonAsync($"/api/conversations/{id}/ask",new{question="pump"});var text=await response.Content.ReadAsStringAsync();
