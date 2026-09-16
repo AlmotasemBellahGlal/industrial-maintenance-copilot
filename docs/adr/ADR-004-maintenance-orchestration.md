@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Scope: Issue #17
-- Subsequent host/streaming/reconciliation integration: [ADR-006](ADR-006-api-streaming-reconciliation.md). Queue-based reasoning remains future work.
+- Subsequent host/streaming/reconciliation integration: [ADR-006](ADR-006-api-streaming-reconciliation.md). Durable reasoning is covered by [ADR-008](ADR-008-durable-async-reasoning-jobs.md).
 
 ## Decision
 
@@ -88,8 +88,9 @@ action expansion after planning is caught by the second policy gate.
 IRunTraceStore records orchestration, agents, read-only tool calls, LLM calls,
 safety gates, outcomes, correlation and returned token usage. Trace names/errors
 are fixed safe labels; no prompts, manual text or tool arguments are traced.
-Costs remain unknown unless supplied by an accounting producer. Provider-internal
-fallback attempts are not fabricated as separate observations.
+[ADR-013](ADR-013-resilience-and-usage-accounting.md) records physical provider attempts
+in a separate persisted usage ledger. Unknown usage/pricing stays null; trace links
+use execution/step IDs rather than inventing token counts for missing observations.
 
 Caller cancellation propagates as OperationCanceledException. Durable run
 cancellation is checked between stages and again atomically at publication;
@@ -99,10 +100,11 @@ Provider-originated cancellation without our token cancellation is a dependency
 failure, not an agent timeout. Insufficient evidence/policy rejection block the
 run; timeout/technical failure fails it.
 
-No automatic retries (retry budget zero) are enabled for model, policy or storage
-writes. This avoids duplicating provider fallback, costs or uncertain writes.
-Tool loops are bounded continuation, not retries. Existing run/execution IDs
-return Conflict; this initial pipeline does not resume or restart jobs.
+The original zero-retry policy is superseded by ADR-013: bounded transient read-only
+calls retry within the agent deadline, with provider fallback suppressed. Policy and
+storage/dispatch writes are not retried by this loop. Tool turns remain bounded
+continuations. Direct repeated run/execution IDs return Conflict; ADR-008 owns durable
+job recovery. Eligible technical failure may yield advisory RAG while the run stays Failed.
 
 Cancellation/failure finalization uses a separate five-second cleanup budget.
 Storage unavailability or uncertain commit outcomes require host reconciliation:
@@ -123,3 +125,9 @@ Exact text matching intentionally favors blocking over broad generation. Procedu
 coverage, durable resumption, distributed execution scheduling and recovery UI
 remain later work. Normal tests use deterministic fakes; PostgreSQL CI tests prove
 real retrieval -> orchestration -> atomic publication -> trace persistence.
+
+## Subsequent decisions
+
+ADR-008 supplies durable reasoning jobs. [ADR-013](ADR-013-resilience-and-usage-accounting.md)
+supersedes the original no-retry policy for bounded read-only transient attempts and adds advisory
+RAG fallback. It does not retry publication/dispatch or weaken exact safety validation.

@@ -242,3 +242,10 @@ The deterministic real PostgreSQL/API proof produced seven provider deltas in ea
 Both uploaded revisions reached Completed; exact citations included `text:lines 1-5; scalars 1-193` and unchanged source excerpts. Unsupported questions produced InsufficientEvidence with zero answer deltas. Cancelling after the first delta caused the demo provider to log `cancelled=True; deltas=1` and persisted a Cancelled turn with no partial final answer. Restarting the API and running `--verify-history` preserved final answers and exact citations. The real Angular journeys passed in both languages; the existing approval/verification/dispatch browser journey also passed.
 
 Run live harnesses sequentially using the same demo identity: actor rate limits remain enabled. A 429 is not an approval/safety failure. The Node smoke helper honors bounded Retry-After only for explicit pre-execution rejection; the product does not silently retry Ask. The T7 harness separately proved observer disconnect, actual Worker termination/restart, replayed progress, explicit cancellation and six bilingual D5 approval/safety journeys.
+
+## Bounded resilience and usage accounting
+
+The Sequential Pipeline now supports bounded transient read-only retries and explicitly advisory
+grounded RAG degradation, plus persisted owner-scoped usage with unknown-aware optional pricing.
+See [configuration, query semantics and proof](RESILIENCE-AND-USAGE.md). Human approval and verified safety
+remain mandatory before dispatch; a degraded answer is never work-order authority.

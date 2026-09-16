@@ -1,3 +1,5 @@
+using IndustrialCopilot.Application.Abstractions.Usage;
+using IndustrialCopilot.Infrastructure.AI;
 using System.Security.Cryptography;
 using System.Text.Json;
 using IndustrialCopilot.Api;
@@ -25,7 +27,7 @@ if(args.Contains("--worker"))
     builder.Services.AddMaintenanceHost(builder.Configuration,()=>identity,true);
     var delay=int.TryParse(Environment.GetEnvironmentVariable("DEMO_MODEL_DELAY_MS"),out var configuredDelay)?configuredDelay:0;
     if(delay is <0 or >30000)throw new ArgumentException("Invalid test-only model delay.");
-    builder.Services.Replace(ServiceDescriptor.Singleton<ILlmProvider>(new DemoProvider(delay)));
+    builder.Services.Replace(ServiceDescriptor.Singleton<ILlmProvider>(p=>new AccountedLlmProvider(new DemoProvider(delay),p.GetRequiredService<ILlmUsageStore>(),p.GetRequiredService<UsagePricing>(),"Demo","demo-test-v1","demo-test-v1",BillingKind.Synthetic)));
     builder.Services.AddSingleton(new IndustrialCopilot.Worker.ReconciliationSchedule(intervalSeconds:5));
     builder.Services.AddSingleton(new IndustrialCopilot.Worker.ReasoningSchedule(ids,leaseSeconds:8));
     builder.Services.AddHostedService<IndustrialCopilot.Worker.Worker>();
@@ -56,7 +58,7 @@ await using var app=ApiHost.Build(["--environment","Development"],b=>
     b.WebHost.UseUrls("http://127.0.0.1:5000");
     b.Configuration.AddInMemoryCollection(config);
     b.Services.AddMaintenanceHost(b.Configuration,()=>HostAuthentication.Identity(new HttpContextAccessor().HttpContext),true);
-    b.Services.Replace(ServiceDescriptor.Singleton<ILlmProvider,DemoProvider>());
+    b.Services.Replace(ServiceDescriptor.Singleton<ILlmProvider>(p=>new AccountedLlmProvider(new DemoProvider(failReasoning:args.Contains("--transient-reasoning")),p.GetRequiredService<ILlmUsageStore>(),p.GetRequiredService<UsagePricing>(),"Demo","demo-test-v1","demo-test-v1",BillingKind.Synthetic)));
     if(args.Contains("--uncertain"))
         b.Services.Replace(ServiceDescriptor.Singleton<IndustrialCopilot.Application.Abstractions.Actions.IExternalDispatch>(p=>
             new UncertainDemoReceiver(new(p.GetRequiredKeyedService<Npgsql.NpgsqlDataSource>("receiver")))));

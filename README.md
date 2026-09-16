@@ -83,3 +83,10 @@ See [SECURITY.md](docs/SECURITY.md) for the threat/control evidence matrix, tech
 ### Product Ask and ingestion
 
 The Angular workspace includes streamed **Ask with citations**, persistent PostgreSQL conversation history, text/PDF **Ingest manual**, and verified Technician/Supervisor capability display. Ask calls the real provider streaming port; its disconnect cancels generation, unlike durable T7 observation. No paid key is needed for the separate deterministic demo. See [demo instructions](docs/DEMO-GUIDE.md), [API setup](docs/HOST-SETUP.md) and [ADR-012](docs/adr/ADR-012-request-owned-ask-and-conversations.md). These answers are advisory and cannot approve or dispatch work.
+
+## Bounded resilience and usage accounting
+
+The Sequential Pipeline now supports bounded transient read-only retries and explicitly advisory
+grounded RAG degradation, plus persisted owner-scoped usage with unknown-aware optional pricing.
+See [configuration, query semantics and proof](docs/RESILIENCE-AND-USAGE.md). Human approval and verified safety
+remain mandatory before dispatch; a degraded answer is never work-order authority.
