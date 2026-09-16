@@ -79,3 +79,7 @@ See [EVALUATION.md](docs/EVALUATION.md) for the 30-case frozen golden set, real 
 ## Security controls
 
 See [SECURITY.md](docs/SECURITY.md) for the threat/control evidence matrix, technician/supervisor demo credentials, hosted data redaction, limits, deployment obligations and reproducible full-history/dependency scans.
+
+### Product Ask and ingestion
+
+The Angular workspace includes streamed **Ask with citations**, persistent PostgreSQL conversation history, text/PDF **Ingest manual**, and verified Technician/Supervisor capability display. Ask calls the real provider streaming port; its disconnect cancels generation, unlike durable T7 observation. No paid key is needed for the separate deterministic demo. See [demo instructions](docs/DEMO-GUIDE.md), [API setup](docs/HOST-SETUP.md) and [ADR-012](docs/adr/ADR-012-request-owned-ask-and-conversations.md). These answers are advisory and cannot approve or dispatch work.

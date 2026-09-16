@@ -1007,3 +1007,9 @@ The exact technologies and concrete implementations are selected independently f
 ### FR-1 staged ingestion (Issue #29)
 
 Application composes Extract -> Clean -> Chunk -> Embed -> Index. Infrastructure implements strict UTF-8 and selectable-text PDF extraction, conservative cleaning and shared deterministic windows. Typed source metadata is additive; citations retain exact revision/page or text-line provenance. Knowledge migration 002 stores metadata and independent ingestion attempts. Completion commits atomically with replacement; ended processing sessions read as Interrupted. This operator workflow does not reuse ReasoningJob or grant safety authority. See [ADR-009](adr/ADR-009-staged-ingestion-and-attempt-reporting.md) and [corpus setup](CORPUS-INGESTION.md).
+
+## Product RAG surface
+
+Application `AskService` consumes the existing retrieval/provider ports. Request-owned SSE forwards generated answer deltas; API abort cancels retrieval/provider work. This is separate from Worker-owned T7 reasoning and its persisted observation stream. `IConversationStore` has an operations PostgreSQL adapter and migration006 with owner predicates, ordered/paginated turns, single-active-turn arbitration and fenced terminal finalization. Restart interruption becomes Failed after a90-second deadline, without replay.
+
+The authenticated ingestion route calls the existing staged FR-1 pipeline and atomic knowledge index. Catalog associations are equipment-scoped; they do not grant executable safety policy. Angular Ask/Ingest pages and role-aware controls preserve the approval, verification and dispatch server boundaries. See [ADR-012](adr/ADR-012-request-owned-ask-and-conversations.md) for limits, evidence gate, history/data handling and cancellation semantics.

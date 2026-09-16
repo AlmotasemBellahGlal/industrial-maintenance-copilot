@@ -136,6 +136,15 @@ jobs:
           if-no-files-found: warn
       - name: Real HTTP/PostgreSQL bilingual smoke
         run: node tools/demo-smoke.mjs
+      - name: Request-owned bilingual Ask and ingestion proof
+        run: node tools/product-smoke.mjs
+      - name: Retain product proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-streaming-proof
+          path: artifacts/product-proof.json
+          if-no-files-found: warn
       - name: Browser integration against the real demo host
         working-directory: src/IndustrialCopilot.Web
         env:
@@ -143,4 +152,4 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-          npm run test:e2e -- integration.spec.ts
+          npm run test:e2e -- integration.spec.ts product-integration.spec.ts
