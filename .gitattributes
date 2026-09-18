@@ -1,0 +1,4 @@
+# Container entrypoints must remain executable POSIX text in Windows checkouts.
+*.sh text eol=lf
+# Canonical source bytes must not depend on a Windows evaluator's core.autocrlf.
+demo/*.txt text eol=lf

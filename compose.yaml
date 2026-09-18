@@ -1,0 +1,181 @@
+name: ${COMPOSE_PROJECT_NAME:-maintenance}
+x-demo: &demo
+  image: ${COMPOSE_PROJECT_NAME:-maintenance}-demo:local
+  build:
+    context: .
+    target: demo
+  environment: &environment
+    ASPNETCORE_ENVIRONMENT: Development
+    DOTNET_ENVIRONMENT: Development
+    DEMO_PROVIDER: ${DEMO_PROVIDER:-Demo}
+    Llm__Ollama__Endpoint: ${OLLAMA_ENDPOINT:-https://host.docker.internal:11434/}
+    Llm__Ollama__ChatModel: ${CHAT_MODEL:-demo-test-v1}
+    Llm__Ollama__EmbeddingModel: ${EMBEDDING_MODEL:-demo-test-v1}
+    Llm__OpenAi__ChatModel: ${CHAT_MODEL:-demo-test-v1}
+    Llm__OpenAi__EmbeddingModel: ${EMBEDDING_MODEL:-demo-test-v1}
+    Llm__OpenAi__ApiKey: ${OPENAI_API_KEY:-}
+    Knowledge__EmbeddingProfile: ${EMBEDDING_PROFILE:-synthetic-demo-v1}
+    Knowledge__EmbeddingRevision: ${EMBEDDING_REVISION:-deterministic-four-features-v1}
+    Knowledge__Dimensions: ${EMBEDDING_DIMENSIONS:-4}
+  volumes:
+    - app-secrets:/app-secrets:ro
+    - public-ca:/public-ca:ro
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  extra_hosts: [host.docker.internal:host-gateway]
+services:
+  setup:
+    <<: *demo
+    user: "0:0"
+    command: [setup]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    volumes:
+      - app-secrets:/app-secrets
+      - db-secret:/db-secret
+      - public-ca:/public-ca
+  db:
+    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    environment:
+      POSTGRES_DB: maintenance_demo
+      POSTGRES_PASSWORD_FILE: /db-secret/password
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - db-secret:/db-secret:ro
+    depends_on:
+      setup: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -h 127.0.0.1 -U postgres -d maintenance_demo]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  migrate:
+    <<: *demo
+    command: [migrate]
+    depends_on:
+      db: {condition: service_healthy}
+  seed:
+    <<: *demo
+    command: [seed]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+  api:
+    <<: *demo
+    command: [api]
+    depends_on:
+      seed: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, dotnet, IndustrialCopilot.Demo.dll, --container, health-api]
+      interval: 15s
+      timeout: 6s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+    stop_grace_period: 20s
+  worker:
+    <<: *demo
+    command: [worker]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, dotnet, IndustrialCopilot.Demo.dll, --container, health-worker]
+      interval: 20s
+      timeout: 6s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 20s
+  web:
+    image: ${COMPOSE_PROJECT_NAME:-maintenance}-web:local
+    build:
+      context: .
+      dockerfile: deploy/Web.Dockerfile
+      target: web
+    ports: ["127.0.0.1:${WEB_PORT:-8080}:8080"]
+    volumes: [public-ca:/public-ca:ro]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health/ready]
+      interval: 15s
+      timeout: 6s
+      retries: 6
+    restart: unless-stopped
+  credentials:
+    <<: *demo
+    profiles: [tools]
+    command: [credentials]
+    depends_on:
+      setup: {condition: service_completed_successfully}
+  corpus:
+    <<: *demo
+    profiles: [tools]
+    command: [corpus]
+    depends_on:
+      seed: {condition: service_completed_successfully}
+  evaluation-db:
+    profiles: [evaluation]
+    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    environment:
+      POSTGRES_DB: maintenance_evaluation
+      POSTGRES_PASSWORD_FILE: /db-secret/password
+    volumes:
+      - evaluation-data:/var/lib/postgresql/data
+      - db-secret:/db-secret:ro
+    depends_on:
+      setup: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -h 127.0.0.1 -U postgres -d maintenance_evaluation]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  evaluation:
+    profiles: [evaluation]
+    build: {context: ., target: evaluation}
+    network_mode: service:evaluation-db
+    command: [--repeat]
+    volumes:
+      - db-secret:/db-secret:ro
+      - evaluation-results:/app/artifacts/evaluation
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      evaluation-db: {condition: service_healthy}
+  smoke:
+    profiles: [tools]
+    image: ${COMPOSE_PROJECT_NAME:-maintenance}-smoke:local
+    build:
+      context: .
+      dockerfile: deploy/Web.Dockerfile
+      target: smoke
+    environment:
+      DEMO_API_BASE: http://web:8080/api
+      DEMO_CREDENTIAL_FILE: /app-secrets/supervisor
+      DEMO_TECHNICIAN_FILE: /app-secrets/technician
+    volumes:
+      - app-secrets:/app-secrets:ro
+      - proof:/work/artifacts
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      web: {condition: service_healthy}
+      worker: {condition: service_healthy}
+
+volumes:
+  pg-data:
+  app-secrets:
+  db-secret:
+  public-ca:
+  proof:
+  evaluation-data:
+  evaluation-results:
