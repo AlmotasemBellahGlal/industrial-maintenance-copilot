@@ -36,7 +36,43 @@ reconciles unresolved dispatch attempts. See [ADR-008](docs/adr/ADR-008-durable-
 Legacy request-owned endpoints remain compatible; `/api/jobs` is the durable path. The demonstration dispatch adapter queues durable tickets, not ERP
 work or physical execution.
 
-## Build and run
+## Docker-only evaluator quick start
+
+Install Docker Desktop with Linux containers (Compose v2+). No host .NET, Node,
+Angular CLI or PostgreSQL is needed. This runs the synthetic, no-paid-key demo;
+it is not an Internet-facing production deployment.
+
+```sh
+git clone https://github.com/AlmotasemBellahGlal/industrial-maintenance-copilot.git
+cd industrial-maintenance-copilot
+cp .env.example .env
+docker compose build --builder default api web
+docker compose up -d --wait
+docker compose run --rm --no-deps credentials
+docker compose run --rm --no-deps corpus
+```
+
+In PowerShell use `Copy-Item .env.example .env` instead of `cp` if preferred.
+Open **http://127.0.0.1:8080**, select **Connection**, and paste the locally
+generated Supervisor or Technician credential. Never share these tokens.
+Migrations and the canonical synthetic pump manual are initialized automatically;
+`corpus` adds the existing 31-document assessment corpus through the FR-1 pipeline.
+English/Arabic and LTR/RTL are available in the UI.
+
+```sh
+docker compose --profile tools build --builder default smoke
+docker compose run --rm --no-deps smoke
+docker compose down
+docker compose up -d --wait
+docker compose run --rm --no-deps smoke --verify-restart
+```
+
+Ordinary `down` preserves data and credentials. **Do not add `-v`** unless you
+intend to erase this demo's database, indexes, history and secret volumes.
+See [deployment, evaluation and troubleshooting](docs/DEPLOYMENT.md) for exact
+roles, optional providers, readiness, recovery proof and limitations.
+
+## Developer build and run
 
 Requires .NET 10. Database integration requires PostgreSQL with pgvector.
 

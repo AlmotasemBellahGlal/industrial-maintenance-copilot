@@ -6,6 +6,64 @@ on:
       - main
 
 jobs:
+  packaging:
+    name: Fresh Docker-only product and persistence proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: packaging-ci
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cp .env.example .env
+          docker compose config --quiet
+          docker compose --profile tools build --builder default api web smoke
+          docker compose up -d --wait
+          docker compose run --rm --no-deps corpus
+          docker compose run --rm --no-deps corpus corpus-status
+          docker compose run --rm --no-deps corpus
+          docker compose run --rm --no-deps smoke
+          docker compose down
+          docker compose up -d --wait
+          docker compose run --rm --no-deps smoke --verify-restart
+      - name: Worker process crash and safe replay
+        run: |
+          docker compose stop worker
+          docker compose run -d --no-deps --name packaging-recovery-worker -e DEMO_MODEL_DELAY_MS=30000 worker
+          docker compose run --rm --no-deps smoke --submit-recovery
+          docker rm -f packaging-recovery-worker
+          docker compose start worker
+          docker compose run --rm --no-deps smoke --verify-recovery
+      - name: Isolated Docker-only evaluation and production runtime targets
+        run: |
+          docker compose --profile evaluation build --builder default evaluation
+          docker compose --profile evaluation up -d --wait evaluation-db
+          docker compose run --rm --no-deps evaluation --repeat
+          docker build --builder default --target api -t production-api-check .
+          docker build --builder default --target worker -t production-worker-check .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+      - name: Browser through production Nginx
+        env:
+          DEMO_E2E: '1'
+          DEMO_WEB_URL: http://127.0.0.1:8080
+          DEMO_API_BASE: http://127.0.0.1:8080/api
+        run: |
+          mkdir -p artifacts/issue25
+          docker compose run --rm --no-deps --entrypoint cat credentials /app-secrets/supervisor > artifacts/issue25/credential.txt
+          docker compose run --rm --no-deps --entrypoint cat credentials /app-secrets/technician > artifacts/issue25/technician-credential.txt
+          cd src/IndustrialCopilot.Web
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test:e2e -- integration.spec.ts product-integration.spec.ts
+      - name: Safe operational logs
+        if: failure()
+        run: docker compose logs migrate seed api worker web
+      - name: Stop isolated stack
+        if: always()
+        run: docker compose --profile tools --profile evaluation down
+
   security:
     name: Full-history secrets and dependency security gates
     runs-on: ubuntu-latest

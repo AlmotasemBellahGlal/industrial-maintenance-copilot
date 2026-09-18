@@ -1,11 +1,12 @@
-// Opt-in loopback-only proof; never logs credentials. Run with the deterministic Demo host.
+// Opt-in loopback/Compose proof; never logs credentials. Run with the deterministic Demo host.
 import { readFileSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { smokeFetch } from './smoke-http.mjs';
-const base='http://127.0.0.1:5000/api';
-const token=readFileSync('artifacts/issue25/credential.txt','utf8').trim();
-const technician=readFileSync('artifacts/issue25/technician-credential.txt','utf8').trim();
+const base=process.env.DEMO_API_BASE??'http://127.0.0.1:5000/api';
+if(!['127.0.0.1','localhost','web'].includes(new URL(base).hostname))throw Error('Use the isolated local demo host.');
+const token=readFileSync(process.env.DEMO_CREDENTIAL_FILE??'artifacts/issue25/credential.txt','utf8').trim();
+const technician=readFileSync(process.env.DEMO_TECHNICIAN_FILE??'artifacts/issue25/technician-credential.txt','utf8').trim();
 const equipmentId='11111111-1111-1111-1111-111111111111';
 const headers=(culture='en-US',credential=token)=>({Authorization:`Bearer ${credential}`,'Accept-Language':culture,'Content-Type':'application/json'});
 async function json(path,body,culture='en-US',credential=token){const r=await smokeFetch(base+path,{method:body===undefined?'GET':'POST',headers:headers(culture,credential),body:body===undefined?undefined:JSON.stringify(body)});return{status:r.status,body:await r.json()};}
