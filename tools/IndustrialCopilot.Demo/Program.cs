@@ -9,6 +9,8 @@ using IndustrialCopilot.Demo;
 using IndustrialCopilot.Infrastructure.Operations;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
+if(args.Contains("--container")) { await ContainerDemo.RunAsync(args); return; }
+
 // Separate opt-in harness: cannot be activated through production API configuration.
 if(!args.Contains("--demo") || Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")!="Development")
     throw new InvalidOperationException("Use --demo with ASPNETCORE_ENVIRONMENT=Development. Never deploy this executable.");
