@@ -7,9 +7,9 @@ for (const ar of [false, true])
     page,
   }) => {
     test.setTimeout(90000);
-    const credential = readFileSync('../../artifacts/issue25/credential.txt', 'utf8').trim();
+    const credential = readFileSync(process.env['DEMO_CREDENTIAL_FILE'] ?? '../../artifacts/issue25/credential.txt', 'utf8').trim();
     const technician = readFileSync(
-      '../../artifacts/issue25/technician-credential.txt',
+      process.env['DEMO_TECHNICIAN_FILE'] ?? '../../artifacts/issue25/technician-credential.txt',
       'utf8',
     ).trim();
     const equipment = '11111111-1111-1111-1111-111111111111',

@@ -185,3 +185,90 @@ accessibility found an invalid status role on aside; replaced it with an appropr
 review exposed missing public trace step IDs; the API now exposes safe IDs and an HTTP integration
 test joins every usage step to the trace. Node emitted existing localStorage/color environment
 warnings; no compiler/security warnings were suppressed. No live paid/provider quality claim.
+
+## Issue #39 — Deployment packaging (in progress)
+
+AI-assisted packaging audit found existing migrations, FR-1 ingestion, roles,
+readiness, persistence and deterministic providers, but no repository-owned
+Docker build/Compose path. Added digest-pinned multi-stage builds, production
+Angular/Nginx, private PostgreSQL/pgvector, ordered migrations/seed and scoped
+random-secret volumes. The existing opt-in Demo harness supplies container
+configuration and reuses the normal hosts; production host logic is unchanged.
+Corpus and evaluation call existing implementations. Frozen FR-3 data is untouched.
+
+Self-review caught referenced API/Worker appsettings publish collisions: the Demo
+publish target now excludes these two default configuration files explicitly,
+without suppressing publish conflict checks. POSIX entrypoint line endings are
+fixed for Windows clones. Real browser tests now accept an external packaged
+origin and credential-file paths without changing their default development path.
+Validation and clean-copy evidence will be recorded when completed; image pulls
+were initially slow. No live hosted-provider quality claim is made.
+
+
+Preflight runtime validation used a temporary image of host-published assemblies
+while Microsoft SDK image downloads were slow. This is explicitly NOT the final
+Docker-only fresh-clone proof. It caught three integration defects: a non-loopback
+HTTP Ollama placeholder rejected by the existing transport policy; loss of the
+API's safe framework logging default when excluding referenced appsettings; and
+Angular critical-CSS loading's inline onload handler being blocked by CSP. Demo
+registration now uses an unused validated loopback endpoint, retains safe logging,
+and explicitly uses password-only PostgreSQL without probing absent GSS libraries.
+Optional real Ollama still requires trusted HTTPS; no transport bypass was added.
+Production CSS remains minified but disables critical-style inlining, preserving
+strict script CSP. All three real browser journeys passed after this correction.
+
+Preflight corpus ingestion/re-ingestion completed 31 documents/150 PDF pages with
+unchanged row counts. Restart retained history/citations/usage identities; a killed
+Worker replayed with one work order and an intact dispatch gate. Evaluation reruns
+were byte-identical on Linux and summary metrics matched the frozen baseline.
+Its older Windows PDF snippets use CRLF, so exact cross-platform evidence IDs and
+scalar locators differ; the baseline was not rewritten and this limit is documented.
+Local validation: .NET build 0 warnings/errors; 666 tests including all 65 PostgreSQL
+tests; 28 Angular tests using a temporary threads runner after the local forks runner
+failed to start; 30 mocked plus 3 real-container browser tests; production build,
+TypeScript, Node smoke-helper tests, dependency and secret gates passed. Existing
+Node localStorage/color warnings remain separate from compiler/security results.
+
+Stopped safely before source-image acceptance/commits: C: fell to approximately
+2.79 GiB. The remaining SDK blob still required about 128 MB download plus 534 MB
+uncompressed, before restore/publish. Only the verified task-owned build process
+tree was stopped; all preflight services were stopped without deleting volumes.
+No machine configuration, user files or frozen evaluation data were changed.
+The clean acceptance snapshot remains on D: with no acceptance database initialized.
+No commit, push or PR was made. Fresh source-only image builds, full clean-copy
+proof (including the strengthened recovery assertions), final review and Git/CI
+delivery remain pending after safe disk capacity is recovered.
+
+Resumed source-only acceptance found a first-boot readiness race: upstream PostgreSQL
+starts a temporary Unix-socket server during initialization, and socket-only
+`pg_isready` released migrations before TCP was ready. Both Compose database
+health checks now use `-h 127.0.0.1`. A separate new-volume project is used to
+retest first boot; the failed attempt and its volumes are preserved. Source SDK
+restore/publish succeeded inside Docker without host output. Final acceptance
+and delivery results follow when completed.
+
+Final source-built Docker-only acceptance completed (Issue #39, 2026-09-18). All
+six images (setup/migrate/seed/api+worker via demo, web, smoke, evaluation) were
+built from repository source with .NET restore/publish inside the Linux Docker
+build; no host-published assemblies were used. Project `maintenance-proof39-final`
+used fresh volumes created after the TCP readiness fix. Services reached Healthy
+in the correct dependency order.
+
+Acceptance results: corpus 31 documents/150 PDF pages, idempotent re-ingestion,
+bilingual EN/AR Ask streaming with exact citation locators, InsufficientEvidence
+refusal, SSE cancellation (state 3 persisted), Technician IDOR/upload 404/403,
+Supervisor D5 (6 bilingual scenarios: Approve/Reject/EditAndApprove, stale
+conflict 409, spoof 400, unverified safety 422, verified dispatch, trace),
+packaging-smoke SPA/proxy/401/usage pass, Worker crash-and-recovery (new attempt,
+single work order, dispatch gate intact), full compose down/up with history and
+citation identity confirmed. Docker-packaged evaluation: --validate SHA256
+ca023d78c65759125bbee3259d9edeb7f201cc3e72e4db30f847285225f52b38 matches frozen
+baseline; --repeat byte-identical outcomes. CRLF/LF line-ending difference in
+Linux-extracted PDF snippets pre-documented; aggregate metrics unchanged.
+
+Security self-review found no defects: no secrets in images, no DB port exposure,
+proxy_ssl_verify on, CORS fail-closed, no privileged containers, all images
+digest-pinned, destructive volume guard active, setup-generated credentials never
+logged. Final validation: compose config valid, git diff --check clean, gitleaks
+55 commits no leaks, NuGet+npm 0 high/critical, frozen FR-3 SHA256 unchanged.
+No live paid/provider quality claim; no safety semantics changed by packaging.

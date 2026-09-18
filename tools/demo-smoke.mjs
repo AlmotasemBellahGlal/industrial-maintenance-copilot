@@ -3,8 +3,9 @@ import { smokeFetch } from './smoke-http.mjs';
 // All workflow state is created by the real HTTP API; no database seeding of approvals.
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-const credential=readFileSync('artifacts/issue25/credential.txt','utf8').trim();
-const base='http://127.0.0.1:5000/api';
+const credential=readFileSync(process.env.DEMO_CREDENTIAL_FILE??'artifacts/issue25/credential.txt','utf8').trim();
+const base=process.env.DEMO_API_BASE??'http://127.0.0.1:5000/api';
+if(!['127.0.0.1','localhost','web'].includes(new URL(base).hostname))throw Error('Use the isolated local demo host.');
 async function call(path,body,culture='en-US',authenticated=true) {
   const response=await smokeFetch(base+path,{method:body===undefined?'GET':'POST',headers:{
     'Content-Type':'application/json','Accept-Language':culture,...(authenticated?{Authorization:`Bearer ${credential}`}:{})

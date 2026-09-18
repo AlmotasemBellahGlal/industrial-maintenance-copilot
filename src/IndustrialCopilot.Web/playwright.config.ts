@@ -5,12 +5,12 @@ export default defineConfig({
   workers: 1,
   timeout: 30000,
   use: {
-    baseURL: 'http://127.0.0.1:4300',
+    baseURL: process.env['DEMO_WEB_URL'] ?? 'http://127.0.0.1:4300',
     headless: true,
     channel: process.env['CI'] ? undefined : 'chrome',
     trace: 'off',
   },
-  webServer: {
+  webServer: process.env['DEMO_WEB_URL'] ? undefined : {
     command: 'npm start -- --host 127.0.0.1 --port 4300',
     url: 'http://127.0.0.1:4300',
     reuseExistingServer: !process.env['CI'],

@@ -1020,3 +1020,15 @@ The Sequential Pipeline now supports bounded transient read-only retries and exp
 grounded RAG degradation, plus persisted owner-scoped usage with unknown-aware optional pricing.
 See [configuration, query semantics and proof](RESILIENCE-AND-USAGE.md). Human approval and verified safety
 remain mandatory before dispatch; a degraded answer is never work-order authority.
+
+## Evaluator packaging
+
+The repository-owned Compose deployment packages the existing hosts behind a
+production Angular/Nginx server and private PostgreSQL/pgvector. One-shot setup,
+migrations and canonical ingestion gate startup. Random persisted demo credentials
+and verified internal TLS preserve API authorization/transport boundaries; only
+the loopback web port is published. The container/Development-only Demo entry point
+reuses existing services, while independent production API/Worker image targets
+retain normal configuration requirements. See [deployment](DEPLOYMENT.md) and
+[ADR-014](adr/ADR-014-compose-evaluator-packaging.md). Durability is safe replay,
+not resumption inside an interrupted model request.

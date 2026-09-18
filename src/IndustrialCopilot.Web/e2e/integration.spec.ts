@@ -8,9 +8,9 @@ test.skip(
 test('Real API/PG: diagnosis SSE → bilingual review → approval → safety block → verification → dispatch → trace', async ({
   page,
 }) => {
-  const credential = readFileSync('../../artifacts/issue25/credential.txt', 'utf8').trim();
+  const credential = readFileSync(process.env['DEMO_CREDENTIAL_FILE'] ?? '../../artifacts/issue25/credential.txt', 'utf8').trim();
   const api = async (path: string, body?: unknown, culture = 'en-US') =>
-    page.request.fetch('http://127.0.0.1:5000/api' + path, {
+    page.request.fetch((process.env['DEMO_API_BASE'] ?? 'http://127.0.0.1:5000/api') + path, {
       method: body === undefined ? 'GET' : 'POST',
       headers: { Authorization: `Bearer ${credential}`, 'Accept-Language': culture },
       data: body,
