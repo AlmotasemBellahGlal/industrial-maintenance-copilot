@@ -509,23 +509,24 @@ The MVP does not include:
 
 ## 10. Requirements Traceability Matrix
 
-The following matrix connects the business requirements to their primary business objectives and planned verification evidence. Implementation references will be updated as the MVP is developed.
+**Updated:** Issue #41, 2026-09-18. All rows updated from "Planned" to reflect actual
+implementation status. Evidence paths reference committed code, tests, and CI jobs.
 
-| Requirement | Primary Objective | Planned Verification / Evidence | Current Status |
+| Requirement | Primary Objective | Status | Evidence (file / test / CI step) |
 |---|---|---|---|
-| BR-01 | BO-01 | Ingestion integration tests for supported formats, metadata, status reporting, and idempotent re-ingestion | Planned |
-| BR-02 | BO-01 | RAG evaluation cases covering retrieval, citations, grounding, and correct refusal | Planned |
-| BR-03 | BO-02, BO-04 | End-to-end diagnostic workflow test and persisted run trace | Planned |
-| BR-04 | BO-01, BO-02 | Equipment/manual revision retrieval tests including ambiguous-equipment cases | Planned |
-| BR-05 | BO-02 | Safety-planning tests and deterministic safety-gate tests | Planned |
-| BR-06 | BO-03 | Work-order generation tests verifying draft/pending state and required content | Planned |
-| BR-07 | BO-03 | Authorisation and approval tests proving dispatch is blocked before supervisor approval | Planned |
-| BR-08 | BO-05 | Queue/worker integration tests covering persistence, restart recovery, resumability, and idempotency | Planned |
-| BR-09 | BO-04 | Workflow trace inspection demonstrating agents, tools, retrieved chunks, and approval actions | Planned |
-| BR-10 | BO-03 | Authentication/authorisation integration tests for Technician and Supervisor roles | Planned |
-| BR-11 | BO-05 | Live progress demonstration and integration test for streamed workflow status | Planned |
-| BR-12 | BO-05 | Cancellation integration test verifying an active workflow reaches a cancelled state | Planned |
-| BR-13 | BO-04 | History API/UI demonstration and authorisation tests | Planned |
-| BR-14 | BO-04 | Correlated logs, traces, token/cost telemetry, and health-check evidence | Planned |
-| BR-15 | BO-01, BO-02 | Golden evaluation dataset, automated evaluation run, and documented results | Planned |
-| BR-16 | BO-02, BO-03 | Security tests, prompt-injection evaluation, schema-validation tests, and CI security scans | Planned |
+| BR-01 Maintenance Document Ingestion | BO-01 | **Implemented** | `tools/IndustrialCopilot.Corpus/` (31 docs / 150 PDF pages); `ManualIngestionService`; idempotent re-ingestion proven by `corpus` command × 2 in CI `validate` job; `IndustrialCopilot.Infrastructure.Tests` ingestion integration tests; `knowledge.ingestion_attempts` migration 002 |
+| BR-02 Grounded Maintenance Q&A | BO-01 | **Implemented** | `AskService` + `IRetrievalService`; `EvidenceCatalog` validates citation provenance; `product-smoke.mjs` proves exact `documentId`/`revisionId`/`locator`/`snippet`; `InsufficientEvidence` refusal proven; ADR-012 |
+| BR-03 Diagnostic Workflow Initiation | BO-02, BO-04 | **Implemented** | `/api/jobs` 202 + `/api/runs`; `MaintenanceOrchestrator`; `operations.runs` migration 001; `t7-smoke.mjs` end-to-end proof; `IndustrialCopilot.IntegrationTests` |
+| BR-04 Equipment / Manual Revision Identification | BO-01, BO-02 | **Implemented** | `EquipmentManualCandidate` with `documentId`/`manualRevisionId` on every retrieval; `EvidenceCatalog.Resolve` validates provenance; `AgentContractTests.EvidenceMustMatchDocumentAndRevision` |
+| BR-05 Diagnostic and Safety Planning | BO-02 | **Implemented** | `DiagnosticSafetyPlannerAgent`; `ISafetyPolicy.AssessAsync` (deterministic, twice); `WorkOrder.AssessSafety`; `demo-smoke.mjs` safety gate assertions |
+| BR-06 Draft Work Order Generation | BO-03 | **Implemented** | `WorkOrderGeneratorAgent`; `WorkOrder` initial status `PendingApproval`; `operations.work_orders` + `work_order_snapshots`; `IndustrialCopilot.Domain.Tests` |
+| BR-07 Supervisor Approval Gate | BO-03 | **Implemented** | `PostgresWorkOrderApprovalService`; dispatch returns 422 before approval; `demo-smoke.mjs` proves 422 + approve + verify + dispatch; `scripts/security/demo_roles.py` CI proof |
+| BR-08 Asynchronous Workflow Execution | BO-05 | **Implemented** | `operations.reasoning_jobs` + lease recovery (migration 005); `t7-smoke.mjs --submit-recovery` / `--verify-recovery`; ADR-008; CI `validate` step "Durable reasoning process crash, recovery, cancellation and bilingual safety proof" |
+| BR-09 Workflow Traceability | BO-04 | **Implemented** | `WorkflowTrace` + `PostgresRunTraceStore` + `operations.traces`; `/api/traces/{executionId}`; `demo-smoke.mjs` asserts 3 agent steps + correlation ID per run |
+| BR-10 Authentication and Role-Based Authorisation | BO-03 | **Implemented** | `HostAuthentication` constant-time compare; `MaintenanceEndpoints.Permit`; `scripts/security/demo_roles.py` CI; Technician 403/404 proven in `product-smoke.mjs` |
+| BR-11 Live Workflow Progress | BO-05 | **Implemented** | `/api/jobs/{id}/events` SSE; `MaintenanceProgressKind` enum (WorkflowStarted, AgentStarted, AgentCompleted, SafetyEvaluated, WaitingForApproval, etc.); `t7-smoke.mjs` reads SSE events |
+| BR-12 Workflow Cancellation | BO-05 | **Implemented** | `/api/jobs/{jobId}/cancel`; `DurableCancellationException`; `product-smoke.mjs` proves SSE cancel + state=3 in history; `IndustrialCopilot.IntegrationTests` |
+| BR-13 Session and Workflow History | BO-04 | **Implemented** | `PostgresConversationStore` migration 006; `/api/conversations`; `packaging-smoke.mjs --verify-restart` proves history + citations survive restart; Technician isolation 404 proven |
+| BR-14 Operational Observability | BO-04 | **Implemented** | `AccountedLlmProvider` + `PostgresLlmUsageStore` migration 007; `/api/usage`; `/health/live` + `/health/ready`; `packaging-smoke.mjs` proves usage records per correlation ID |
+| BR-15 RAG and Workflow Evaluation | BO-01, BO-02 | **Implemented** | `evaluation/golden-v1.json` (30 cases, 12 adversarial); `IndustrialCopilot.Evaluation`; `--validate` + `--repeat` (byte-identical) in CI; `docs/EVALUATION.md`; honest poor scores documented |
+| BR-16 AI and Application Security Controls | BO-02, BO-03 | **Implemented** | `AgentRuntime` UNTRUSTED DATA boundary; `AgentJson.Shape` tool argument validation; `scripts/security/scan.py` (gitleaks + NuGet/npm) in CI `security` job; `docs/SECURITY.md` OWASP matrix; direct/indirect injection cases in `golden-v1.json` |

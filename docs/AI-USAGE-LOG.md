@@ -272,3 +272,96 @@ digest-pinned, destructive volume guard active, setup-generated credentials neve
 logged. Final validation: compose config valid, git diff --check clean, gitleaks
 55 commits no leaks, NuGet+npm 0 high/critical, frozen FR-3 SHA256 unchanged.
 No live paid/provider quality claim; no safety semantics changed by packaging.
+
+## Issue #41 — Documentation, Architecture and Engineering Compliance
+
+### Delegated to AI
+
+AI (Kiro + Codex/Claude) executed the full documentation and engineering
+compliance pass for the ITI assessment. Starting from the completed read-only
+audit (pre-Issue #41), AI created or updated the following artifacts:
+
+- `docs/SYSTEM-DESIGN.md` — Part A target architecture (18 sections covering API
+  gateway, identity, secrets, broker, workers, autoscaling, caching, managed
+  PostgreSQL/vector, object storage, observability, CI/CD environments, backup,
+  HA, certificate rotation, deployment strategy, and cost model); Part B MVP
+  gap table (17 rows with evidence paths, deferred rationale, and mitigation);
+  4 design decisions with alternatives considered; explicit not-implemented list.
+- `docs/ARCHITECTURE.md` — appended full sequence diagram (202/SSE/3 agents/
+  2 safety assessments/approval/dispatch), DFD with trust boundaries (UNTRUSTED
+  DATA labels, what the hosted LLM sees and does not see), and ERD (all 20
+  entities from the actual SQL migrations 001–007 + 001–002 knowledge).
+- `docs/diagrams/` — three canonical Mermaid source files committed as reviewed
+  diagram artifacts: `sequence-maintenance-workflow.mmd`, `dfd-trust-boundaries.mmd`,
+  `erd-operational-schema.mmd`.
+- `prompts/` — versioned prompt library for all three agents (v1.md files) with
+  exact prompt text, design intent, output schema, safety invariants, and
+  contract test references.
+- `tests/IndustrialCopilot.Application.Tests/Reasoning/PromptVersionTests.cs` —
+  12 contract tests: 3 runtime-vs-file identity checks, 3 role-identifier checks,
+  3 no-authority checks, 3 JSON-output checks. All pass.
+- `.kiro/steering/architecture-rules.md` — 10 mandatory invariant rules auto-
+  injected by Kiro into every AI session. Active from Issue #41 onwards.
+- `docs/AGENTIC-WORKFLOW.md` — documents 5 mechanisms, delegation history across
+  20 PRs, human-controlled boundaries, AI mistakes from the log, and risk analysis.
+- `LICENSE` (MIT), `CONTRIBUTING.md`, `CODEOWNERS`, `.github/PULL_REQUEST_TEMPLATE.md`,
+  `.github/ISSUE_TEMPLATE/bug_report.md`, `.github/ISSUE_TEMPLATE/feature_request.md`.
+- `docs/BRD.md` — traceability matrix updated from "Planned" × 16 to
+  "Implemented" × 16 with exact evidence paths.
+- `README.md` — full rewrite: prerequisites table, environment variables table,
+  no-key demo path, how-to-run-tests section, 5-Minute Demo Path (7 numbered
+  steps covering ingestion/grounded answer/refusal/multi-agent/approval gate/
+  trace-usage/T7 recovery), variant disclosure, key documentation table.
+- `teaching/README.md` — teaching pack plan (honestly marked as not yet
+  created): session structure, 5 lab tasks, 3 stretch challenges, 6 learning
+  outcomes, assessment map, 5 misconceptions.
+
+### Human constraints given
+
+- No changes to frozen FR-3 dataset or baseline.
+- No weakening of safety/security/T7 invariants.
+- No invented functionality — every documentation claim must be backed by code.
+- No file-path dependencies in Docker containers from the prompt library.
+- Do not merge the PR.
+- Use evidence from actual SQL migration files for the ERD.
+- Use exact prompt strings from agent .cs files for the Markdown library.
+- Architecture steering rules must reflect actual code invariants, not aspirational rules.
+
+### AI mistakes and self-review corrections
+
+- **Prompt test regex**: Initial implementation extracted the first fenced code
+  block in the Markdown file, but the prompt files contain multiple blocks
+  (metadata YAML, prompt text, output schema). Corrected to extract the block
+  under the `## Prompt Text` heading. Verified all 12 tests pass.
+
+- **ERD relationship for `operations_manuals`**: Initial draft had a direct FK
+  from `conversations` to `manuals(id)`, but the actual migration 006 uses a
+  composite FK `(document_id, equipment_id)`. Corrected to match the SQL.
+
+- **SYSTEM-DESIGN.md cost model**: First draft showed a specific PostgreSQL
+  instance type without qualifying which cloud provider it applied to. Corrected
+  to specify "AWS Aurora PostgreSQL" explicitly and add "Included in managed
+  cluster costs" for items priced in compute.
+
+- **README `no-key demo path`**: Initial draft implied Ollama could be used with
+  plain HTTP on `localhost`. The actual transport policy in `OllamaLlmProvider`
+  rejects non-loopback plain HTTP. Corrected to state: "Requires HTTPS gateway
+  — plain HTTP is rejected by the provider's transport policy."
+
+- **BRD traceability matrix**: First pass changed all 16 rows from "Planned" to
+  "Implemented" without verifying each. Self-review caught that BR-04 (equipment/
+  manual revision identification) needed a specific test reference beyond the
+  general orchestrator. Added `AgentContractTests.EvidenceMustMatchDocumentAndRevision`
+  as the explicit test evidence.
+
+### Verification
+
+- `dotnet build` — 0 warnings/errors.
+- `dotnet test --filter PromptVersionTests` — 12 pass.
+- `git diff --check` — clean.
+- `docker compose config --quiet` — valid.
+- `dotnet run --project tools/IndustrialCopilot.Evaluation -- --validate` —
+  SHA256 `ca023d78c65759125bbee3259d9edeb7f201cc3e72e4db30f847285225f52b38` unchanged.
+- Full `.NET test` suite (666 tests) — confirmed passing after changes.
+- Secret scan — clean (no new credential-pattern files introduced).
+- No production code changes; no Docker packaging impact; no agent runtime changes.

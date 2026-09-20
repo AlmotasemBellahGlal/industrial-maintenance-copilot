@@ -1,0 +1,153 @@
+sequenceDiagram
+    %% Full maintenance workflow: submission → agents → approval → safety → dispatch
+    %% Trust boundary: Browser and all data it supplies are UNTRUSTED.
+    %% AgentRuntime prefixes every system message with UNTRUSTED DATA label on user/retrieved content.
+
+    actor User as 👤 User (Technician / Supervisor)
+    participant UI as Angular UI<br/>(untrusted browser)
+    participant API as ASP.NET Core API<br/>(authenticated)
+    participant PG as PostgreSQL<br/>(operations schema)
+    participant Worker as Background Worker<br/>(lease-based)
+    participant Orch as MaintenanceOrchestrator<br/>(Sequential Pipeline)
+    participant SM as SymptomMatcherAgent
+    participant RAG as RetrievalService<br/>(pgvector hybrid)
+    participant LLM as LLM Provider<br/>(OpenAI / Ollama / Demo)
+    participant DSP as DiagnosticSafetyPlannerAgent
+    participant Safety as ISafetyPolicy<br/>(deterministic)
+    participant WOG as WorkOrderGeneratorAgent
+    participant Trace as WorkflowTrace /<br/>RunTraceStore
+
+    %% ── 1. Job submission ──────────────────────────────────────────────────
+    User->>UI: Enter symptom, select equipment
+    UI->>API: POST /api/jobs {equipmentId, symptom}<br/>Idempotency-Key: <uuid>
+    API->>API: Authenticate bearer token<br/>Validate equipment scope
+    API->>PG: INSERT reasoning_jobs (Queued)<br/>INSERT reasoning_job_attempts (attempt 1)
+    API-->>UI: 202 Accepted {jobId}
+    UI->>API: GET /api/jobs/{jobId}/events (SSE)
+    Note over UI,API: SSE stream stays open for live progress.<br/>Disconnect does NOT cancel the durable job.
+
+    %% ── 2. Worker claims job ───────────────────────────────────────────────
+    Worker->>PG: SELECT ... FOR UPDATE SKIP LOCKED<br/>(claim lease on available job)
+    PG-->>Worker: Job payload + lease token
+    Worker->>PG: UPDATE reasoning_jobs SET status=Running, lease_token, lease_until
+    Worker->>Trace: Start trace (execution_id)
+    Worker->>PG: INSERT reasoning_job_events (WorkflowStarted)
+    API-->>UI: SSE: {kind:WorkflowStarted}
+
+    %% ── 3. SymptomMatcher ─────────────────────────────────────────────────
+    Worker->>Orch: ExecuteAsync(request)
+    Orch->>Trace: Start step (Agent, SymptomMatcher)
+    Orch->>SM: MatchAsync(input)
+    Worker->>PG: INSERT reasoning_job_events (AgentStarted: SymptomMatcher)
+    API-->>UI: SSE: {kind:AgentStarted, agent:SymptomMatcher}
+
+    loop retrieve_evidence tool calls (bounded by ReasoningLimits.ToolCalls)
+        SM->>LLM: CompleteWithToolsAsync<br/>[System: prompt-v1 + UNTRUSTED DATA policy]<br/>[User: symptom + candidates]
+        LLM-->>SM: ToolCall {name:retrieve_evidence, candidate:0, query:"..."}
+        SM->>RAG: RetrieveAsync(query, topK, documentId, revisionId, Hybrid)
+        RAG->>PG: Hybrid RRF query<br/>(keyword tsvector + cosine vector)
+        PG-->>RAG: chunks {locator, snippet, embedding}
+        RAG-->>SM: RetrievalResult[] (provenance-validated)
+        SM->>LLM: ToolResult (evidence catalog JSON)<br/>Note: retrieved text marked UNTRUSTED DATA
+    end
+
+    LLM-->>SM: Final JSON {outcome:Success, candidate, symptoms:[...]}
+    SM-->>Orch: SymptomMatchResult.Success
+    Orch->>Trace: End step (Completed)
+    Worker->>PG: INSERT reasoning_job_events (AgentCompleted: SymptomMatcher)
+    API-->>UI: SSE: {kind:AgentCompleted, agent:SymptomMatcher}
+
+    %% ── 4. DiagnosticSafetyPlanner ────────────────────────────────────────
+    Orch->>DSP: PlanAsync(input)
+    Worker->>PG: INSERT reasoning_job_events (AgentStarted: DiagnosticSafetyPlanner)
+    API-->>UI: SSE: {kind:AgentStarted, agent:DiagnosticSafetyPlanner}
+
+    DSP->>LLM: CompleteWithToolsAsync<br/>[No tools — evidence already in input]<br/>[User: symptom + match + evidence catalog]
+    LLM-->>DSP: JSON {outcome:Success, steps:[...], prerequisites:[...]}
+    DSP-->>Orch: DiagnosticPlanResult.Success
+
+    Orch->>Trace: End step (Completed)
+    Worker->>PG: INSERT reasoning_job_events (AgentCompleted: DiagnosticSafetyPlanner)
+    API-->>UI: SSE: {kind:AgentCompleted, agent:DiagnosticSafetyPlanner}
+
+    %% ── 5. Deterministic safety assessment #1 ─────────────────────────────
+    Orch->>Safety: AssessAsync(plan, null)
+    Note over Safety: Pure code — no LLM call.<br/>Reads reviewed-procedures.json.
+    Safety-->>Orch: SafetyAssessment {canProceed, requirements}
+    Orch->>Trace: End step (Tool: deterministic_safety_policy)
+    Worker->>PG: INSERT reasoning_job_events (SafetyEvaluated)
+    API-->>UI: SSE: {kind:SafetyEvaluated, allowed:true}
+
+    %% ── 6. WorkOrderGenerator ─────────────────────────────────────────────
+    Orch->>WOG: GenerateAsync(input)
+    Worker->>PG: INSERT reasoning_job_events (AgentStarted: WorkOrderGenerator)
+    API-->>UI: SSE: {kind:AgentStarted, agent:WorkOrderGenerator}
+
+    WOG->>LLM: CompleteWithToolsAsync<br/>[No tools — uses plan evidence]<br/>[User: symptom + plan + evidence catalog]
+    LLM-->>WOG: JSON {outcome:Success, description:"...", actions:[...]}
+    WOG-->>Orch: WorkOrderGenerationResult.Success
+
+    Orch->>Trace: End step (Completed)
+    Worker->>PG: INSERT reasoning_job_events (AgentCompleted: WorkOrderGenerator)
+    API-->>UI: SSE: {kind:AgentCompleted, agent:WorkOrderGenerator}
+
+    %% ── 7. Safety assessment #2 (re-check final scope) ───────────────────
+    Orch->>Safety: AssessAsync(plan, proposal)
+    Note over Safety: Re-validates that the generated work order<br/>does not expand scope beyond the validated plan.
+    Safety-->>Orch: SafetyAssessment {canProceed, requirements}
+
+    %% ── 8. Atomic publication ─────────────────────────────────────────────
+    Orch->>PG: TryPublishReviewAsync<br/>(INSERT work_order, work_order_snapshots,<br/>requirements; UPDATE run→WaitingForApproval)<br/>Concurrency token fenced
+    PG-->>Orch: Published
+    Orch->>Trace: End root step
+    Worker->>PG: INSERT reasoning_job_events (WorkOrderReady, WaitingForApproval)
+    Worker->>PG: UPDATE reasoning_jobs SET status=Completed, release lease
+    API-->>UI: SSE: {kind:WaitingForApproval, workOrderId}
+    Note over UI,PG: Worker releases lease.<br/>No Worker or HTTP request stays alive during human review.
+
+    %% ── 9. Human supervisor review ────────────────────────────────────────
+    User->>UI: View work order, review safety requirements
+    UI->>API: GET /api/work-orders/{id}
+    API->>PG: SELECT work_order_snapshots, requirements, decisions
+    PG-->>API: Work order state
+    API-->>UI: Work order + requirements + current status
+
+    alt Supervisor approves
+        UI->>API: POST /api/work-orders/{id}/decisions<br/>{decision:Approve, target:{revision,token}}
+        API->>API: Authenticate; check approve permission + equipment scope
+        API->>PG: INSERT decisions (Approve); UPDATE snapshot status→Approved
+        API-->>UI: 200 OK
+    else Supervisor edits and approves
+        UI->>API: POST /api/work-orders/{id}/edited-safety-preview
+        API->>Safety: AssessAsync(editedContent)
+        Safety-->>API: New requirements
+        API-->>UI: 200 {canProceed, requirements}
+        UI->>API: POST /api/work-orders/{id}/decisions<br/>{decision:EditAndApprove, editedContent, reviewedRequirements}
+        API->>PG: INSERT decisions; UPDATE snapshot; reassess requirements
+        API-->>UI: 200 OK
+    else Supervisor rejects
+        UI->>API: POST /api/work-orders/{id}/decisions {decision:Reject, target}
+        API->>PG: INSERT decisions; UPDATE snapshot status→Rejected
+        API-->>UI: 200 OK
+    end
+
+    %% ── 10. Safety verification ───────────────────────────────────────────
+    User->>UI: Record physical safety observation
+    UI->>API: POST /api/work-orders/{id}/verifications<br/>{prerequisiteId, evidence, satisfied:true}
+    API->>API: Authenticate; check verify permission
+    API->>PG: UPDATE requirements SET verified_by, verified_at, evidence, satisfied
+    API-->>UI: 200 OK
+
+    %% ── 11. Dispatch gate (both conditions enforced) ──────────────────────
+    User->>UI: Dispatch work order
+    UI->>API: POST /api/work-orders/{id}/dispatch {target}
+    API->>API: Authenticate; check dispatch permission
+    API->>PG: Recheck: approved=true AND all mandatory requirements satisfied=true
+    Note over API,PG: Server-side enforcement — not LLM output.<br/>422 if either condition false.
+    API->>PG: INSERT dispatch_attempts (Pending); reserve token
+    API->>PG: Dispatch adapter writes to inbox table
+    PG-->>API: dispatch_attempt_id, state:Confirmed
+    API-->>UI: 200 {state:Confirmed, attemptId}
+
+    %% ── 12. Usage and trace persistence ──────────────────────────────────
+    Note over PG,Trace: Every LLM call records to operations.llm_usage<br/>(call_id, actor, equipment_id, correlation_id,<br/>provider, tokens, cost) via AccountedLlmProvider.<br/>Trace steps queryable at /api/traces/{executionId}.
