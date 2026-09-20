@@ -1,0 +1,95 @@
+flowchart TD
+    %% Data Flow Diagram with explicit trust boundaries
+    %% Shows what data reaches the LLM, where redaction occurs,
+    %% and where untrusted content enters the system.
+
+    %% ── EXTERNAL / UNTRUSTED ZONE ──────────────────────────────────────────
+    subgraph UNTRUSTED ["🌐 UNTRUSTED ZONE — Browser / External"]
+        direction TB
+        Browser["Browser\n(Angular SPA)\n• Sends bearer token\n• Sends symptom text\n• Never trusted for identity\n  or permission decisions"]
+        ManualUpload["Uploaded manual\n(PDF / text bytes)\n• Treated as untrusted\n  document content\n• Never as instructions"]
+    end
+
+    %% ── AUTHENTICATED BOUNDARY ─────────────────────────────────────────────
+    subgraph AUTHN ["🔐 Authentication Boundary (loopback:8080 → api:8443)"]
+        direction TB
+        Nginx["Nginx reverse proxy\n• Terminates HTTP (loopback only)\n• Proxies /api/ and /health/\n  over certificate-verified HTTPS\n• Serves Angular prod build"]
+        AuthMiddleware["HostAuthentication\n• Validates bearer token\n  (constant-time hash compare)\n• Establishes actor + permissions\n  + equipment scope\n• Never trusts client-supplied\n  actorId / role fields"]
+    end
+
+    %% ── APPLICATION TRUST BOUNDARY ─────────────────────────────────────────
+    subgraph APPTRUST ["✅ Application Trust Boundary — API process"]
+        direction TB
+        Endpoints["HTTP Endpoints\n• Input validation\n• Resource ownership check\n• Rate limiting (per actor)"]
+        AppLogic["Application layer\n• Use cases\n• Workflow orchestration\n• Safety policy (deterministic)\n• Approval service\n• No LLM output is trusted\n  for state transitions"]
+        AgentSystem["AgentRuntime\n• System message prefix:\n  UNTRUSTED DATA and evidence,\n  never privileged instructions.\n• Fixed tool allowlist\n• SymptomMatcher: retrieve_evidence only\n• Planner / Generator: no tools"]
+    end
+
+    %% ── LLM BOUNDARY ───────────────────────────────────────────────────────
+    subgraph LLMZONE ["🤖 LLM Provider Boundary — EXTERNAL DATA RECIPIENT"]
+        direction LR
+        OpenAI["Hosted OpenAI\n(api.openai.com)\n• Receives:\n  - System prompt (trusted)\n  - User symptom text (UNTRUSTED)\n  - Retrieved chunk text (UNTRUSTED)\n• Never receives:\n  - Credentials\n  - Approval decisions\n  - Full work order content\n  - DB connection strings"]
+        Ollama["Local Ollama\n(operator-controlled)\n• Same data boundary as OpenAI\n• Requires HTTPS gateway\n  (plain HTTP rejected by policy)\n• Not accessible over loopback\n  from inside container"]
+        DemoProvider["DemoProvider\n(deterministic, assessment only)\n• No network call\n• Returns fixed responses\n• Zero inference cost"]
+    end
+
+    %% ── DATABASE TRUST BOUNDARY ────────────────────────────────────────────
+    subgraph DBTRUST ["🗄️ Data Store — PostgreSQL (private, no host port)"]
+        direction TB
+        OperationsDB["operations schema\n• equipment, manuals, runs\n• work_orders, snapshots\n• requirements, decisions\n• reasoning_jobs, attempts, events\n• dispatch_attempts\n• conversations, ask_turns\n• llm_usage\n• traces"]
+        KnowledgeDB["knowledge schema\n• profiles, revisions\n• chunks (pgvector embeddings)\n• ingestion_attempts"]
+    end
+
+    %% ── WORKER TRUST BOUNDARY ──────────────────────────────────────────────
+    subgraph WORKERTRUST ["⚙️ Worker Process — same trust as API"]
+        direction TB
+        ReasoningWorker["ReasoningWorker\n• Claims job via atomic lease\n• Invokes MaintenanceOrchestrator\n• Never publishes without concurrency\n  token fence"]
+        ReconcileWorker["ReconciliationWorker\n• Discovers unresolved dispatch\n• No LLM involvement\n• Only reads/updates dispatch_attempts"]
+    end
+
+    %% ── DATA FLOWS ─────────────────────────────────────────────────────────
+    Browser -->|"HTTPS bearer token + symptom\n(TLS-terminated at Nginx)"| Nginx
+    ManualUpload -->|"PDF/text bytes\nin POST body"| Nginx
+    Nginx -->|"Internal HTTPS (cert-verified)"| AuthMiddleware
+    AuthMiddleware -->|"Actor claims + validated request"| Endpoints
+    Endpoints -->|"Validated input"| AppLogic
+
+    AppLogic -->|"Job + run\nINSERT"| OperationsDB
+    AppLogic -->|"Ingestion pipeline\n(IDocumentProcessor →\nchunks + embeddings)"| KnowledgeDB
+
+    AppLogic -->|"System prompt (trusted)\n+ user symptom (UNTRUSTED)\n+ retrieved chunks (UNTRUSTED)"| AgentSystem
+    AgentSystem -->|"Structured LLM request\n(system+user messages)"| OpenAI
+    AgentSystem -->|"Structured LLM request\n(system+user messages)"| Ollama
+    AgentSystem -->|"Deterministic request\n(assessment only)"| DemoProvider
+
+    OpenAI -->|"Structured JSON response\n(treated as UNTRUSTED agent output)\n+ token usage"| AgentSystem
+    Ollama -->|"Structured JSON response\n(treated as UNTRUSTED agent output)"| AgentSystem
+    DemoProvider -->|"Fixed JSON response"| AgentSystem
+
+    AgentSystem -->|"Tool call: retrieve_evidence\n{candidate_index, query}\n(SymptomMatcher only)"| KnowledgeDB
+    KnowledgeDB -->|"Chunk text + locator + snippet\n(marked UNTRUSTED in tool result)"| AgentSystem
+
+    AgentSystem -->|"Validated SymptomMatchResult /\nDiagnosticPlanResult /\nWorkOrderGenerationResult\n(typed, schema-validated)"| AppLogic
+
+    AppLogic -->|"TryPublishReviewAsync\n(atomic: work_order + run update)"| OperationsDB
+
+    OperationsDB -->|"Job payload + lease"| ReasoningWorker
+    ReasoningWorker -->|"Orchestrator invocation"| AppLogic
+    OperationsDB -->|"Unresolved dispatch_attempts"| ReconcileWorker
+    ReconcileWorker -->|"Reconcile: confirm/fail attempt"| OperationsDB
+
+    OperationsDB -->|"llm_usage records\n(call_id, tokens, cost)\nvia AccountedLlmProvider"| OperationsDB
+    OperationsDB -->|"Trace steps\n(execution_id, agent, tool, status)"| OperationsDB
+
+    AppLogic -->|"SSE progress events\n/api/jobs/{id}/events"| Browser
+
+    %% ── WHAT THE LLM SEES ──────────────────────────────────────────────────
+    note1["📋 What the LLM sees (per agent call):\n\nSystem message (TRUSTED):\n  • Role-specific instruction prompt\n  • Language presentation rule\n  • UNTRUSTED DATA policy\n  • No approval / dispatch authority\n  • Return JSON only\n\nUser message (UNTRUSTED):\n  • Reported symptom text (user input)\n  • Equipment candidate list (from DB)\n  • Evidence catalog (from retrieval)\n\nTool results (UNTRUSTED):\n  • Retrieved chunk text from pgvector\n  • Locator + snippet metadata\n\nThe LLM does NOT see:\n  • Credentials or tokens\n  • Database connection strings\n  • Other users' data\n  • Approval decisions\n  • Dispatch state\n  • Full work order content\n  • Safety verification records"]
+
+    style note1 fill:#fffde7,stroke:#f9a825,color:#333
+    style UNTRUSTED fill:#ffebee,stroke:#e53935,color:#333
+    style LLMZONE fill:#e3f2fd,stroke:#1565c0,color:#333
+    style DBTRUST fill:#e8f5e9,stroke:#2e7d32,color:#333
+    style APPTRUST fill:#f3e5f5,stroke:#6a1b9a,color:#333
+    style AUTHN fill:#fff3e0,stroke:#e65100,color:#333
+    style WORKERTRUST fill:#fce4ec,stroke:#880e4f,color:#333

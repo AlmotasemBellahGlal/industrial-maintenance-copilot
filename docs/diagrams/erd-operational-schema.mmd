@@ -1,0 +1,276 @@
+erDiagram
+    %% Entity-Relationship Diagram — derived from actual SQL migrations
+    %% Sources: src/IndustrialCopilot.Infrastructure/Operations/Migrations/ (001–007)
+    %% and     src/IndustrialCopilot.Infrastructure/Knowledge/Migrations/ (001–002)
+
+    %% ── knowledge schema ───────────────────────────────────────────────────
+    knowledge_profiles {
+        text profile PK
+        text binding
+        int  dimensions
+    }
+
+    knowledge_revisions {
+        uuid document_id PK
+        uuid revision_id PK
+        text profile FK
+        int  dimensions
+    }
+
+    knowledge_chunks {
+        uuid document_id PK
+        uuid revision_id PK
+        uuid chunk_id    PK
+        text profile     FK
+        int  dimensions
+        text locator
+        text content
+        vector embedding
+        tsvector search_text
+        jsonb metadata
+        int  page
+        text section
+    }
+
+    knowledge_ingestion_attempts {
+        uuid id PK
+        uuid document_id
+        uuid revision_id
+        jsonb metadata
+        int  state
+        int  stage
+        int  failure
+        timestamptz started_at
+        timestamptz updated_at
+        int  pages
+        int  chunks
+    }
+
+    %% ── operations schema ──────────────────────────────────────────────────
+    operations_equipment {
+        uuid id PK
+    }
+
+    operations_manuals {
+        uuid id          PK
+        uuid equipment_id FK
+    }
+
+    operations_manual_revisions {
+        uuid id        PK
+        uuid manual_id FK
+    }
+
+    operations_runs {
+        uuid id            PK
+        uuid equipment_id  FK
+        text symptom
+        int  status
+        bool cancellation_requested
+        uuid token
+    }
+
+    operations_work_orders {
+        uuid id     PK
+        uuid token
+        uuid run_id FK
+    }
+
+    operations_work_order_snapshots {
+        uuid id              PK
+        uuid token           PK
+        int  revision
+        int  status
+        int  assessment_revision
+        uuid equipment_id    FK
+        uuid manual_id       FK
+        uuid manual_revision_id FK
+        text symptom
+        text description
+    }
+
+    operations_work_order_proposals {
+        uuid id PK
+        jsonb payload
+    }
+
+    operations_actions {
+        uuid id          PK
+        uuid token       PK
+        int  action_order PK
+        text instruction
+    }
+
+    operations_requirements {
+        uuid id              PK
+        uuid token           PK
+        uuid requirement_id  PK
+        int  position
+        text description
+        bool mandatory
+        text verified_by
+        text verified_at
+        text evidence
+        bool satisfied
+    }
+
+    operations_decisions {
+        uuid id          PK
+        uuid token       PK
+        int  revision    PK
+        int  kind
+        text supervisor
+        text decided_at
+    }
+
+    operations_human_approvals {
+        uuid id       PK
+        int  revision PK
+        uuid token
+    }
+
+    operations_dispatch_attempts {
+        uuid attempt_id       PK
+        uuid work_order_id    FK
+        int  revision
+        uuid requested_token
+        uuid reserved_token
+        uuid run_id           FK
+        uuid run_token
+        text actor_id
+        text reserved_at
+        int  state
+        bool invocation_started
+        text external_reference
+        text failure_category
+        timestamptz next_reconciliation_at
+    }
+
+    operations_dispatch_events {
+        bigint sequence    PK
+        uuid   attempt_id  FK
+        text   actor_id
+        text   recorded_at
+        int    state
+        text   category
+    }
+
+    operations_reasoning_jobs {
+        uuid    id              PK
+        text    actor
+        text    submission_key
+        text    request_hash
+        uuid    run_id          FK
+        uuid    work_order_id
+        uuid    equipment_id    FK
+        uuid    correlation_id
+        jsonb   payload
+        int     status
+        int     phase
+        bool    cancellation_requested
+        bigint  version
+        timestamptz available_at
+        text    owner
+        uuid    lease_token
+        timestamptz lease_until
+        int     attempt
+        jsonb   result
+        text    failure_code
+    }
+
+    operations_reasoning_job_attempts {
+        uuid id        PK
+        uuid job_id    FK
+        int  attempt   PK
+        uuid execution_id
+        timestamptz started_at
+        timestamptz ended_at
+        text failure_code
+    }
+
+    operations_reasoning_job_events {
+        uuid   job_id      FK
+        bigint sequence    PK
+        uuid   execution_id FK
+        jsonb  payload
+    }
+
+    operations_conversations {
+        uuid id          PK
+        text actor
+        uuid equipment_id FK
+        uuid document_id  FK
+        uuid revision_id  FK
+        text culture
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    operations_ask_turns {
+        uuid   id              PK
+        uuid   conversation_id FK
+        bigint sequence
+        text   question
+        text   answer
+        int    state
+        jsonb  citations
+        uuid   correlation_id
+        timestamptz created_at
+        timestamptz deadline
+        timestamptz finished_at
+    }
+
+    operations_traces {
+        uuid  execution_id PK
+        uuid  correlation_id
+        uuid  run_id
+        bigint version
+        jsonb payload
+    }
+
+    operations_llm_usage {
+        uuid call_id       PK
+        text actor
+        uuid equipment_id
+        uuid correlation_id
+        uuid run_id
+        text provider
+        timestamptz started_at
+        int  status
+        jsonb payload
+    }
+
+    %% ── Relationships ──────────────────────────────────────────────────────
+    knowledge_profiles       ||--o{ knowledge_revisions : "profile+dimensions"
+    knowledge_revisions      ||--o{ knowledge_chunks : "document_id+revision_id+profile+dimensions"
+    knowledge_revisions      ||--o{ knowledge_ingestion_attempts : "document_id+revision_id"
+
+    operations_equipment     ||--o{ operations_manuals : "equipment_id"
+    operations_equipment     ||--o{ operations_runs : "equipment_id"
+    operations_equipment     ||--o{ operations_reasoning_jobs : "equipment_id"
+    operations_equipment     ||--o{ operations_conversations : "equipment_id"
+
+    operations_manuals       ||--o{ operations_manual_revisions : "manual_id"
+    operations_manuals       ||--o{ operations_work_order_snapshots : "manual_id+equipment_id"
+    operations_manual_revisions ||--o{ operations_work_order_snapshots : "manual_revision_id+manual_id"
+
+    operations_runs          ||--o| operations_work_orders : "run_id"
+    operations_runs          ||--o| operations_reasoning_jobs : "run_id"
+    operations_runs          ||--o{ operations_dispatch_attempts : "run_id"
+
+    operations_work_orders   ||--o{ operations_work_order_snapshots : "id+token (current)"
+    operations_work_orders   ||--o| operations_work_order_proposals : "id"
+    operations_work_order_snapshots ||--o{ operations_actions : "id+token"
+    operations_work_order_snapshots ||--o{ operations_requirements : "id+token"
+    operations_work_order_snapshots ||--o{ operations_decisions : "id+token"
+    operations_work_order_snapshots ||--o{ operations_human_approvals : "id+token"
+
+    operations_work_orders   ||--o{ operations_dispatch_attempts : "work_order_id"
+    operations_dispatch_attempts ||--o{ operations_dispatch_events : "attempt_id"
+
+    operations_reasoning_jobs ||--o{ operations_reasoning_job_attempts : "job_id"
+    operations_reasoning_job_attempts ||--o{ operations_reasoning_job_events : "execution_id"
+
+    operations_manuals       ||--o{ operations_conversations : "document_id+equipment_id"
+    operations_manual_revisions ||--o{ operations_conversations : "revision_id+document_id"
+    operations_conversations ||--o{ operations_ask_turns : "conversation_id"
