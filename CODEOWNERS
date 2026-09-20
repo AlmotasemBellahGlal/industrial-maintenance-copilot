@@ -1,0 +1,28 @@
+# Code owners for the Industrial Maintenance Copilot repository.
+# These users are automatically requested for review on pull requests
+# that modify the owned paths.
+#
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repository.
+*                                    @AlmotasemBellahGlal
+
+# Safety-critical domain logic — always require explicit review.
+src/IndustrialCopilot.Domain/        @AlmotasemBellahGlal
+src/IndustrialCopilot.Application/Reasoning/  @AlmotasemBellahGlal
+
+# Frozen evaluation data — must not be modified without explicit review.
+evaluation/                          @AlmotasemBellahGlal
+
+# Agent prompt library — changes require prompt contract test update.
+prompts/                             @AlmotasemBellahGlal
+
+# Security controls.
+scripts/security/                    @AlmotasemBellahGlal
+docs/SECURITY.md                     @AlmotasemBellahGlal
+
+# Architecture decision records.
+docs/adr/                            @AlmotasemBellahGlal
+
+# CI/CD pipeline configuration.
+.github/                             @AlmotasemBellahGlal
