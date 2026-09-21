@@ -365,3 +365,65 @@ audit (pre-Issue #41), AI created or updated the following artifacts:
 - Full `.NET test` suite (666 tests) — confirmed passing after changes.
 - Secret scan — clean (no new credential-pattern files introduced).
 - No production code changes; no Docker packaging impact; no agent runtime changes.
+
+## Issue #43 — Improve RAG Retrieval Quality and Evaluation Results
+
+### Delegated to AI
+
+AI executed the complete diagnosis and implementation cycle for RAG retrieval improvement
+(Issue #43). Work performed:
+
+- Read all retrieval pipeline files before touching any code (PostgresKnowledgeStore.cs,
+  ReciprocalRankFusion.cs, DeterministicDocumentChunker.cs, CorpusEmbeddings.cs,
+  EvaluationRunner.cs, AssessmentCorpus.cs, golden-v1.json — 30 cases in full).
+- Reproduced the frozen before-baseline using Docker (validated SHA256, ran `--repeat`,
+  confirmed: Dense/Hybrid Hit@5=18.18%, Keyword Hit@5=0%, MRR=0.1818, 0 errors).
+- Performed structured root-cause analysis identifying three root causes:
+  (1) 32-dim hash-bucket collision causing near-identical vectors across equipment families;
+  (2) `plainto_tsquery` AND semantics returning 0 keyword hits on natural-language questions;
+  (3) DemoProvider narrow answer scope (by design — not changed).
+- Performed anti-gaming review: confirmed no golden IDs, expected answers, or evaluation-only
+  code paths in the proposed changes.
+- Implemented two targeted changes:
+  - `CorpusEmbeddings`: 32 → 256 dimensions using `((h[0] << 8) | h[1]) % 256`.
+  - `PostgresKnowledgeStore.RankAsync`: `plainto_tsquery` → `websearch_to_tsquery` (OR semantics).
+  - Updated `EvaluationRunner` config string to reflect new dimensions and query type.
+- Added 9 unit tests (`EmbeddingDimensionTests.cs`): dimensions=256, non-zero norm, determinism,
+  batch consistency, cross-family discriminability for pump/motor/isolation queries.
+- Added 3 PostgreSQL integration tests (`KeywordQueryTests` in `PostgresKnowledgeTests.cs`):
+  natural-language OR-match, single-term backward compatibility, SQL injection safety.
+- Rebuilt Docker evaluation image, cleared stale 32-dim evaluation-db volume, ran AFTER evaluation.
+- AFTER: Dense/Hybrid Hit@5=40.91% (+22.73pp), Dense/Hybrid MRR=0.3727 (+0.191),
+  Keyword Hit@5=0% (unchanged — DemoProvider bottleneck and stemming limitation).
+- Updated `docs/EVALUATION.md`: added diagnosis, changes, anti-gaming statement, before/after table,
+  cases fixed, remaining failures, updated current metrics.
+
+### Human constraints given
+
+- Frozen `evaluation/golden-v1.json` and `golden-v1.sha256` must not be modified.
+- No hard-coded golden answers, expected document IDs, or evaluation-only code paths.
+- Preserve Clean Architecture, D5 safety/approval invariants, T7 durability, security controls.
+- Demo and corpus stacks must not be affected by embedding dimension change.
+- Do not weaken low-evidence refusal.
+
+### AI mistakes and self-review corrections
+
+- First AFTER evaluation run failed (exit 2) because the evaluation-db volume still contained
+  the old 32-dim knowledge schema. The evaluation runner's `CheckSpaceAsync` detected
+  incompatible dimensions. Fix: stopped evaluation-db, deleted volume, recreated fresh, reran.
+- `EmbeddingDimensionTests.cs` initially used `.Result` (blocking call) in non-async test methods,
+  triggering xUnit1031 warning. Fixed to use `async`/`await` or `GetAwaiter().GetResult()`.
+- Test used `result.ModelRevision` which does not exist on `EmbeddingResult` (correct property is
+  `Model`). Fixed.
+
+### Verification
+
+- `dotnet build` — 0 warnings, 0 errors.
+- `dotnet test` — 622 pass, 68 skipped (PG integration — no local DB), 0 fail.
+  Includes 9 new embedding dimension tests, 3 new keyword integration tests.
+- Frozen FR-3 `--validate`: SHA256 `ca023d78c65759125bbee3259d9edeb7f201cc3e72e4db30f847285225f52b38` unchanged.
+- AFTER `--repeat`: PASS — byte-identical deterministic rerun confirmed.
+- BEFORE baseline preserved: `artifacts/before-baseline-run.log`.
+- No modifications to `evaluation/golden-v1.json`, `golden-v1.sha256`, or fixtures.
+- No modifications to Domain, D5 safety policy, T7 worker, security controls.
+- Demo and corpus Docker stacks unaffected (use separate embedding profiles and databases).
