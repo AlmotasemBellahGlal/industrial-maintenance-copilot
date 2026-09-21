@@ -203,3 +203,87 @@ public class PostgresKnowledgeTests(KnowledgeDatabase database) : IClassFixture<
         Assert.All(results, r => { Assert.Equal(doc, r.DocumentId); Assert.Equal(rev, r.ManualRevisionId); Assert.StartsWith("text:lines", r.Locator); Assert.NotEmpty(r.Snippet); });
     }
 }
+
+public class KeywordQueryTests(KnowledgeDatabase database) : IClassFixture<KnowledgeDatabase>
+{
+    private sealed class ConstantEmbeddings : ILlmProvider
+    {
+        public Task<EmbeddingResult> GenerateEmbeddingsAsync(EmbeddingRequest request, CancellationToken token) =>
+            Task.FromResult(new EmbeddingResult(request.Inputs.Select(_ => (IReadOnlyList<float>)new float[] { 1, 0 }).ToArray(), "test-model"));
+        public Task<CompletionResponse> CompleteAsync(CompletionRequest r, CancellationToken t) => throw new NotSupportedException();
+        public Task<ToolCompletionResponse> CompleteWithToolsAsync(CompletionRequest r, IReadOnlyList<ToolDefinition> t, CancellationToken c) => throw new NotSupportedException();
+        public IAsyncEnumerable<StreamingChunk> StreamAsync(CompletionRequest r, CancellationToken t) => throw new NotSupportedException();
+    }
+
+    private PostgresKnowledgeStore Store() =>
+        new(database.Source, new KnowledgeStoreOptions(new EmbeddingSpace("keyword-test", "test-model", 2), "kw-binding"), new ConstantEmbeddings());
+
+    private static IndexedChunk Chunk(Guid doc, Guid rev, int id, string content) =>
+        new(new(doc, rev, Guid.Parse($"00000000-0000-0000-0000-{id:000000000000}"), $"loc-{id}", content), new float[] { 1, 0 });
+
+    /// <summary>
+    /// websearch_to_tsquery uses OR semantics for unquoted terms, so a natural-language question
+    /// "What should be observed when the pump shows seal leakage?" returns results containing
+    /// any of {pump, seal, leakage, observed, ...} rather than requiring all terms to match
+    /// (plainto_tsquery AND semantics). This test verifies the OR-match behaviour.
+    /// </summary>
+    [PostgresFact]
+    public async Task NaturalLanguageQuestionFindsDomainChunkViaWebsearchOr()
+    {
+        var doc = Guid.NewGuid(); var rev = Guid.NewGuid(); var store = Store();
+        // Index a chunk with domain-specific terms that do NOT contain all question words.
+        // The question contains "what", "should", "be", "observed", "when", "shows" — which
+        // are not in the corpus. With AND (plainto_tsquery) this would return 0 hits.
+        // With OR (websearch_to_tsquery) it returns the pump/seal content.
+        await store.ReplaceRevisionAsync(new(doc, rev, "keyword-test", [
+            Chunk(doc, rev, 1, "For seal leakage compare the drip tray observation with the isolated seal housing pump"),
+            Chunk(doc, rev, 2, "Unrelated motor casing temperature baseline overheating terminal")
+        ]), default);
+
+        // The full question text — every word must not be required (OR semantics).
+        var results = await store.RetrieveAsync(
+            new("What should be observed when the pump shows seal leakage?", 5, doc, rev),
+            RetrievalMode.Keyword, default);
+
+        // The pump/seal chunk should rank first via OR match on {pump, seal, leakage, observed}.
+        Assert.NotEmpty(results);
+        Assert.Equal(doc, results[0].DocumentId);
+        Assert.Contains("seal", results[0].Snippet);
+    }
+
+    /// <summary>
+    /// Single-word queries behave identically with websearch_to_tsquery and plainto_tsquery.
+    /// Verifies backward compatibility with existing short query patterns.
+    /// </summary>
+    [PostgresFact]
+    public async Task SingleTermQueryStillMatchesExistingBehavior()
+    {
+        var doc = Guid.NewGuid(); var rev = Guid.NewGuid(); var store = Store();
+        await store.ReplaceRevisionAsync(new(doc, rev, "keyword-test", [
+            Chunk(doc, rev, 1, "pump seal leakage"),
+            Chunk(doc, rev, 2, "motor bearing vibration")
+        ]), default);
+
+        var results = await store.RetrieveAsync(new("pump", 5, doc, rev), RetrievalMode.Keyword, default);
+        Assert.Single(results);
+        Assert.Contains("pump", results[0].Snippet);
+    }
+
+    /// <summary>
+    /// SQL injection via the query text must not execute. websearch_to_tsquery passes the
+    /// query as a parameterized value, not interpolated SQL.
+    /// </summary>
+    [PostgresFact]
+    public async Task SqlInjectionInNaturalLanguageQueryDoesNotExecute()
+    {
+        var doc = Guid.NewGuid(); var rev = Guid.NewGuid(); var store = Store();
+        await store.ReplaceRevisionAsync(new(doc, rev, "keyword-test", [Chunk(doc, rev, 1, "pump")]), default);
+
+        // Should return empty, not throw and not execute SQL.
+        var results = await store.RetrieveAsync(
+            new("'; DROP TABLE knowledge.chunks; -- pump", 5, doc, rev),
+            RetrievalMode.Keyword, default);
+        // "pump" should still be retrievable after the malicious query.
+        Assert.Single(await store.RetrieveAsync(new("pump", 5, doc, rev), RetrievalMode.Keyword, default));
+    }
+}

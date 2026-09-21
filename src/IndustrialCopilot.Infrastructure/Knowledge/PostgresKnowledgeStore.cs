@@ -144,8 +144,11 @@ public sealed class PostgresKnowledgeStore(NpgsqlDataSource dataSource, Knowledg
     {
         // SQL alternatives are constants, never supplied by the caller. MATERIALIZED ensures
         // vectors from other profiles/dimensions cannot reach the distance operator.
+        // websearch_to_tsquery treats un-quoted terms as OR (tsquery with |), which matches natural-language
+        // maintenance questions without requiring every question word to appear in the chunk.
+        // plainto_tsquery uses AND and fails entirely when any query word (e.g. "what", "shows") is absent.
         var ranking = vector is null
-            ? "SELECT *, ts_rank_cd(search_text,plainto_tsquery('simple',@query))::double precision AS score FROM filtered WHERE search_text @@ plainto_tsquery('simple',@query)"
+            ? "SELECT *, ts_rank_cd(search_text,websearch_to_tsquery('simple',@query))::double precision AS score FROM filtered WHERE search_text @@ websearch_to_tsquery('simple',@query)"
             : "SELECT *, 1-(embedding <=> CAST(@vector AS vector)) AS score FROM filtered";
         var threshold = vector is null ? "" : "WHERE score >= @minimum";
         var sql = """

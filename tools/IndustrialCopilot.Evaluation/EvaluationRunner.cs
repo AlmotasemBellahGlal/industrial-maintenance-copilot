@@ -27,7 +27,7 @@ public static class EvaluationRunner
         foreach(var c in dataset.Cases)
             if(c.Relevant.Any(e=>!catalog.Contains((e.DocumentId,e.RevisionId))) || (c.Scope is {} scope && !catalog.Any(k=>k.Doc==scope.DocumentId && (scope.RevisionId is null || k.Rev==scope.RevisionId)))) throw new ArgumentException("Unknown dataset revision identity.");
         await new KnowledgeSchema(source).ApplyAsync(token);
-        var embeddings=new CorpusEmbeddings(); var space=new EmbeddingSpace("assessment-corpus-v1","synthetic-lexical-v1",32);
+        var embeddings=new CorpusEmbeddings(); var space=new EmbeddingSpace("assessment-corpus-v1","synthetic-lexical-v1",256);
         var store=new PostgresKnowledgeStore(source,new(space,"synthetic-lexical-v1",100,0),embeddings);
         await using var reports=new PostgresIngestionReports(connectionString);
         var ingestion=new ManualIngestionService(new DocumentPipeline(new ManualDocumentExtractor(),new DocumentCleaner(),new DeterministicDocumentChunker()),embeddings,store,space,reports:reports);
@@ -63,7 +63,7 @@ public static class EvaluationRunner
                 observed.Outcome==ObservedOutcome.Answer?grounding.Item1:null,grounding.Item2,c.Expected==ExpectedBehavior.Refusal,observed.Outcome==ObservedOutcome.Refusal,observed.Error));
         }
         return new(dataset.Version,datasetHash,fixtureHash,
-            "fr1-v1 + 3 evaluation-only text revisions; assessment-corpus-v1 / synthetic-lexical-v1 / dimensions=32; TopK=5; cosine>=0; RRF k=60 candidates=100; agent=production SymptomMatcherAgent + unchanged DemoProvider; agent retrieval=Hybrid",
+            "fr1-v1 + 3 evaluation-only text revisions; assessment-corpus-v1 / synthetic-lexical-v1 / dimensions=256; TopK=5; cosine>=0; RRF k=60 candidates=100; keyword=websearch_to_tsquery(simple); agent=production SymptomMatcherAgent + unchanged DemoProvider; agent retrieval=Hybrid",
             EvaluationMetrics.Summarize(dataset,results),results);
     }
     private sealed record Observation(IReadOnlyList<Ranking> Rankings,ObservedOutcome Outcome,IReadOnlyList<string> Claims,IReadOnlyList<GroundedEvidence> Citations,IReadOnlyList<RetrievalResult> AgentRetrieved,string? Error);
