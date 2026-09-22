@@ -427,3 +427,69 @@ AI executed the complete diagnosis and implementation cycle for RAG retrieval im
 - No modifications to `evaluation/golden-v1.json`, `golden-v1.sha256`, or fixtures.
 - No modifications to Domain, D5 safety policy, T7 worker, security controls.
 - Demo and corpus Docker stacks unaffected (use separate embedding profiles and databases).
+
+## Issue #45 — Teaching Pack (Complete)
+
+### Delegated to AI
+
+AI (Kiro) created all required teaching deliverables from the plan in `teaching/README.md`.
+
+Files created:
+- `teaching/slides.md` — 21-slide deck with embedded instructor speaker notes,
+  timing annotations, live demo cues, and discussion prompts. Covers all session topics:
+  RAG pipeline, ingestion/chunking, embeddings/retrieval (keyword/dense/hybrid), agentic
+  pipeline with 3 agents, trust boundaries, Clean Architecture, human approval gate,
+  T7 durable jobs, observability, evaluation, prompt versioning, Docker packaging.
+- `teaching/session-plan.md` — 90-minute agenda with per-section timing, learning outcomes,
+  pre-session checklist, detailed section notes, and assessment mapping.
+- `teaching/lab-guide.md` — 5 hands-on lab tasks with step-by-step instructions, expected
+  outputs for each task, and troubleshooting guide.
+- `teaching/answer-key.md` — Complete instructor answers for all 5 lab tasks, all 5
+  discussion questions, and all 3 stretch challenges. Cites specific code locations for
+  every answer.
+- `teaching/stretch-challenges.md` — 3 advanced extension challenges: Impact Assessor agent
+  design (conceptual), two-Worker lease exclusion proof (operational), production embedding
+  provider swap (configuration + measurement).
+- `teaching/misconceptions.md` — One-page handout covering 5 common misconceptions with
+  code references and repository evidence for each correction.
+- `teaching/README.md` — Updated from PLANNED to COMPLETE; includes file inventory,
+  session topic rationale, learning outcomes, quick-start commands, assessment mapping,
+  and explicit list of remaining human actions (videos).
+
+### Human constraints given
+
+- All claims must be backed by actual implemented code — no invented features.
+- Distinguish clearly between what is implemented and what is deferred/out-of-scope.
+- Lab tasks must be runnable against the current repository.
+- No fake video links; no claim that videos exist.
+- Do not modify production code for the teaching deliverable.
+- Minimal disk use (C: below 1 GiB — markdown only).
+
+### AI mistakes and self-review corrections
+
+- Stretch Challenge 3 initially referenced `dimensions=32` for the corpus profile.
+  Corrected to match the current 256-dim configuration after the Issue #43 change.
+- Misconception #2 initially cited "18% hybrid hit" — corrected to "41%" to reflect
+  the current post-Issue-#43 baseline.
+- Session plan initially listed `dotnet build` as a pre-session step — removed since
+  the Docker-based demo path requires no host SDK.
+- Answer key for Lab Task 3 initially said "403 Forbidden for Technician" without noting
+  that this check happens before the 422 dispatch check — corrected to clarify the
+  permission check order.
+
+### Verification
+
+- All file paths referenced in lab tasks verified against repository structure.
+- All code snippets (AgentRuntime.Allows, dispatch check, EmbeddingSpace, etc.) verified
+  against actual source files.
+- Evaluation metrics verified against `artifacts/after-baseline-run.log` (41% after fix).
+- Lab Task 4 (prompt contract test) verified: `PromptVersionTests.cs` exists and the
+  test name `SymptomMatcherRuntimePromptMatchesVersionedArtifact` is correct.
+- Equipment ID `11111111-1111-1111-1111-111111111111` and document IDs `22222222-...`,
+  `33333333-...` verified against `ContainerDemo.cs` constants.
+- Frozen SHA256 `ca023d78c65759125bbee3259d9edeb7f201cc3e72e4db30f847285225f52b38`
+  verified against `evaluation/golden-v1.sha256`.
+- `docker compose run --rm --no-deps corpus corpus-status` command verified against
+  `compose.yaml` corpus service definition.
+- `dotnet test --filter FullyQualifiedName~PromptVersionTests` syntax verified.
+- No production code modified. No Docker operations performed (C: at ~0.9 GiB).
