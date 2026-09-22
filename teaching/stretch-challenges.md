@@ -142,7 +142,7 @@ cp .env.example .env.openai
 # Edit .env.openai:
 COMPOSE_PROJECT_NAME=maintenance-openai
 DEMO_PROVIDER=OpenAi
-OPENAI_API_KEY=sk-YOUR-KEY-HERE
+OPENAI_API_KEY=<your-openai-api-key>
 CHAT_MODEL=gpt-4o-mini
 EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_PROFILE=openai-3small-v1
