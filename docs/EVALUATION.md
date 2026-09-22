@@ -73,6 +73,8 @@ Groundedness is a deterministic proxy over emitted answers: every citation must 
 
 `plainto_tsquery('simple', query)` creates an AND of every query token. A natural-language question like `"What should be observed when the pump shows seal leakage?"` expands to `what & should & be & observed & when & the & pump & shows & seal & leakage`. Corpus chunks contain `seal`, `leakage`, `pump`, `observation` but not `what`, `should`, `when`, `shows`. The AND requires all tokens — any missing token returns zero matches. Result: 0% keyword hit@5 for all 22 evidence-eligible cases.
 
+Note: `websearch_to_tsquery` also uses AND for unquoted whitespace-separated terms. The keyword metric remains 0% after the change because the evaluation queries are still natural-language questions. The production value of `websearch_to_tsquery` is support for richer query syntax (`OR`, `NOT`, quoted phrases) from callers — not a fix for the evaluation's keyword metric.
+
 **Root cause 3 — Agent answer bottleneck (explains why retrieval improvement ≠ answer improvement)**
 
 The `DemoProvider` used by the evaluator recognizes only the specific "pump vibration" scenario and otherwise returns `InsufficientEvidence`. Even when retrieval now correctly finds the pump-family page-3 chunks for `normal-01-observations`, the DemoProvider still refuses. This is by design: the evaluator measures the full retrieval + agent path with the narrow deterministic provider. Retrieval improvement is measurable in the ranking metrics independently of agent answer rate.
@@ -85,13 +87,15 @@ The `DemoProvider` used by the evaluator recognizes only the specific "pump vibr
 
 Uses `((h[0] << 8) | h[1]) % 256` instead of `h[0] % 32`, giving 8× more buckets and substantially less cross-family collision. Algorithm is still deterministic bag-of-words — the semantic limitations documented throughout this file remain unchanged. This is a configuration change in the isolated evaluation profile; the demo and corpus stacks are unaffected (they use separate profiles and databases).
 
-**Change 2 — Keyword query: `websearch_to_tsquery` (OR) instead of `plainto_tsquery` (AND)**
+**Change 2 — Keyword query: `websearch_to_tsquery` instead of `plainto_tsquery`**
 
 `src/IndustrialCopilot.Infrastructure/Knowledge/PostgresKnowledgeStore.cs`
 
-`websearch_to_tsquery('simple', @query)` treats unquoted terms as OR (tsquery with `|` operators), matching chunks that contain any of the question's meaningful terms. Single-word queries behave identically to before. Multi-word natural-language questions now return results when any term matches rather than requiring all terms simultaneously. This is a production-valid improvement: in any real deployment, AND-of-all-query-words fails for conversational question syntax.
+`websearch_to_tsquery('simple', @query)` supports richer query syntax than `plainto_tsquery`: explicit `OR`/`AND`/`NOT` operators and quoted phrases are interpreted correctly, while `plainto_tsquery` treats these keywords as literal tokens. For example, `websearch_to_tsquery('simple', 'seal OR leakage')` produces `'seal' | 'leakage'`; `plainto_tsquery` would treat `OR` as a literal word. Both functions treat whitespace-separated unquoted terms as AND.
 
-**Anti-gaming statement:** Neither change inspects golden case IDs, expected answer strings, or expected document IDs at runtime. The improvements apply uniformly to the full retrieval path. The evaluation scores for keyword remain 0% because the keyword probing query uses the full natural-language question, and the `simple` config still lacks stemming — the improvement is structurally present but the DemoProvider prevents the keyword-only path from producing answers. No golden answers were modified, no scoring logic was changed, no evaluation-only code paths were added.
+**Important clarification:** This change does NOT fix the 0% keyword hit rate for natural-language evaluation questions. The evaluation sends full natural-language questions like `"What should be observed when the pump shows seal leakage?"` — this still uses AND semantics with `websearch_to_tsquery` (unquoted whitespace terms are AND-ed). The corpus chunks don't contain question words like `what`, `should`, `when`, so keyword retrieval still returns 0 hits for these queries with both functions. The production value of this change is support for richer query syntax from callers using the `IRetrievalService` directly (e.g., `"pump OR motor"` or `"\"seal housing\""`). This is a production-valid improvement; it just does not affect the evaluation's keyword metrics because the evaluator uses raw natural-language questions.
+
+**Anti-gaming statement:** Neither change inspects golden case IDs, expected answer strings, or expected document IDs at runtime. The improvements apply uniformly to the full retrieval path. The evaluation scores for keyword remain 0% because: (1) `websearch_to_tsquery` uses AND semantics for unquoted whitespace-separated terms (same as `plainto_tsquery` for simple queries), and (2) the evaluation sends full natural-language questions that contain words absent from corpus chunks. No golden answers were modified, no scoring logic was changed, no evaluation-only code paths were added.
 
 ## Before / After comparison (Issue #43)
 

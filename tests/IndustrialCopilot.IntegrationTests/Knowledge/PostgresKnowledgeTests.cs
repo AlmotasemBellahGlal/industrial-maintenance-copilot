@@ -1,4 +1,4 @@
-using IndustrialCopilot.Application.Abstractions.AI;
+﻿using IndustrialCopilot.Application.Abstractions.AI;
 using IndustrialCopilot.Application.Abstractions.AI.Models;
 using IndustrialCopilot.Application.Abstractions.Documents.Models;
 using IndustrialCopilot.Application.Abstractions.Indexing.Models;
@@ -222,40 +222,35 @@ public class KeywordQueryTests(KnowledgeDatabase database) : IClassFixture<Knowl
         new(new(doc, rev, Guid.Parse($"00000000-0000-0000-0000-{id:000000000000}"), $"loc-{id}", content), new float[] { 1, 0 });
 
     /// <summary>
-    /// websearch_to_tsquery uses OR semantics for unquoted terms, so a natural-language question
-    /// "What should be observed when the pump shows seal leakage?" returns results containing
-    /// any of {pump, seal, leakage, observed, ...} rather than requiring all terms to match
-    /// (plainto_tsquery AND semantics). This test verifies the OR-match behaviour.
+    /// websearch_to_tsquery supports richer query syntax than plainto_tsquery:
+    /// explicit OR operators, quoted phrases, and NOT.
+    /// Unquoted terms without explicit OR are AND-ed (same as plainto_tsquery).
+    /// This test verifies explicit OR syntax: "seal OR temperature" matches chunks
+    /// containing either term, which plainto_tsquery('simple', 'seal OR temperature')
+    /// would not handle correctly (it would treat OR as a literal token).
     /// </summary>
     [PostgresFact]
-    public async Task NaturalLanguageQuestionFindsDomainChunkViaWebsearchOr()
+    public async Task WebsearchOrSyntaxFindsChunksContainingAnyExplicitOrTerm()
     {
         var doc = Guid.NewGuid(); var rev = Guid.NewGuid(); var store = Store();
-        // Index a chunk with domain-specific terms that do NOT contain all question words.
-        // The question contains "what", "should", "be", "observed", "when", "shows" — which
-        // are not in the corpus. With AND (plainto_tsquery) this would return 0 hits.
-        // With OR (websearch_to_tsquery) it returns the pump/seal content.
         await store.ReplaceRevisionAsync(new(doc, rev, "keyword-test", [
-            Chunk(doc, rev, 1, "For seal leakage compare the drip tray observation with the isolated seal housing pump"),
-            Chunk(doc, rev, 2, "Unrelated motor casing temperature baseline overheating terminal")
+            Chunk(doc, rev, 1, "seal leakage inspection pump"),
+            Chunk(doc, rev, 2, "motor overheating baseline temperature")
         ]), default);
 
-        // The full question text — every word must not be required (OR semantics).
+        // Explicit OR in websearch_to_tsquery syntax.
+        // plainto_tsquery would treat "OR" as a literal token; websearch_to_tsquery treats it as an operator.
         var results = await store.RetrieveAsync(
-            new("What should be observed when the pump shows seal leakage?", 5, doc, rev),
+            new("seal OR temperature", 5, doc, rev),
             RetrievalMode.Keyword, default);
 
-        // The pump/seal chunk should rank first via OR match on {pump, seal, leakage, observed}.
-        Assert.NotEmpty(results);
-        Assert.Equal(doc, results[0].DocumentId);
-        Assert.Contains("seal", results[0].Snippet);
+        // Both chunks should be found: one has 'seal', the other has 'temperature'.
+        Assert.Equal(2, results.Count);
+        Assert.Contains(results, r => r.Snippet.Contains("seal"));
+        Assert.Contains(results, r => r.Snippet.Contains("temperature"));
     }
 
-    /// <summary>
-    /// Single-word queries behave identically with websearch_to_tsquery and plainto_tsquery.
-    /// Verifies backward compatibility with existing short query patterns.
-    /// </summary>
-    [PostgresFact]
+        [PostgresFact]
     public async Task SingleTermQueryStillMatchesExistingBehavior()
     {
         var doc = Guid.NewGuid(); var rev = Guid.NewGuid(); var store = Store();

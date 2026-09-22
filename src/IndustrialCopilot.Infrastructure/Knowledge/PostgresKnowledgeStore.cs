@@ -144,9 +144,12 @@ public sealed class PostgresKnowledgeStore(NpgsqlDataSource dataSource, Knowledg
     {
         // SQL alternatives are constants, never supplied by the caller. MATERIALIZED ensures
         // vectors from other profiles/dimensions cannot reach the distance operator.
-        // websearch_to_tsquery treats un-quoted terms as OR (tsquery with |), which matches natural-language
-        // maintenance questions without requiring every question word to appear in the chunk.
-        // plainto_tsquery uses AND and fails entirely when any query word (e.g. "what", "shows") is absent.
+        // websearch_to_tsquery supports richer query syntax than plainto_tsquery: explicit OR/AND/NOT
+        // operators and quoted phrases are interpreted, while plainto_tsquery treats them as literal tokens.
+        // Both treat whitespace-separated unquoted terms as AND. The practical production improvement
+        // is that callers can use "pump OR motor" syntax, and quoted phrases like "seal housing" match
+        // contiguous terms. plainto_tsquery('simple', 'seal OR leakage') would treat OR as a literal word;
+        // websearch_to_tsquery('simple', 'seal OR leakage') correctly produces 'seal' | 'leakage'.
         var ranking = vector is null
             ? "SELECT *, ts_rank_cd(search_text,websearch_to_tsquery('simple',@query))::double precision AS score FROM filtered WHERE search_text @@ websearch_to_tsquery('simple',@query)"
             : "SELECT *, 1-(embedding <=> CAST(@vector AS vector)) AS score FROM filtered";
