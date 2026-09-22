@@ -23,7 +23,7 @@ var parsed = new NpgsqlConnectionStringBuilder(connection);
 if (parsed.Database != "maintenance_corpus" || parsed.Host is not ("localhost" or "127.0.0.1")) throw new InvalidOperationException("Corpus smoke requires loopback maintenance_corpus database.");
 await using var source = NpgsqlDataSource.Create(connection);
 if (args.Contains("--ingest")) await new KnowledgeSchema(source).ApplyAsync(default);
-var space = new EmbeddingSpace("assessment-corpus-v1", "synthetic-lexical-v1", 32);
+var space = new EmbeddingSpace("assessment-corpus-v1", "synthetic-lexical-v1", 256);
 var provider = new CorpusEmbeddings();
 var store = new PostgresKnowledgeStore(source, new(space, "synthetic-lexical-v1"), provider);
 await using var reports = new PostgresIngestionReports(connection);

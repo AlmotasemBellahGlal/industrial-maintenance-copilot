@@ -10,7 +10,7 @@ namespace IndustrialCopilot.IntegrationTests.Knowledge;
 
 public class IngestionPersistenceTests(KnowledgeDatabase database) : IClassFixture<KnowledgeDatabase>
 {
-    private readonly EmbeddingSpace space = new("corpus-test-v1", "synthetic-lexical-v1",32);
+    private readonly EmbeddingSpace space = new("corpus-test-v1", "synthetic-lexical-v1",256);
     private PostgresKnowledgeStore Store() => new(database.Source,new(space,"synthetic-lexical-v1"),new CorpusEmbeddings());
     private ManualIngestionService Service() => new(new DocumentPipeline(new ManualDocumentExtractor(),new DocumentCleaner(),new DeterministicDocumentChunker()),new CorpusEmbeddings(),Store(),space,reports:new PostgresIngestionReports(database.ConnectionString));
     private static async Task<int> Ingest(ManualIngestionService service,DocumentProcessingRequest request,byte[] bytes)
@@ -71,7 +71,7 @@ public class IngestionPersistenceTests(KnowledgeDatabase database) : IClassFixtu
         {kill.Parameters.AddWithValue("id",attempt.Id);Assert.True((bool)(await kill.ExecuteScalarAsync())!);}
         await attempt.DisposeAsync();
         Assert.Equal(IngestionState.Interrupted,Assert.Single(await new PostgresIngestionReports(database.ConnectionString).ReadAsync(request.DocumentId,request.ManualRevisionId,default)).State);
-        var chunk=new IndexedChunk(new(request.DocumentId,request.ManualRevisionId,Guid.NewGuid(),"line 1","pump"),Enumerable.Repeat(1f,32).ToArray());
+        var chunk=new IndexedChunk(new(request.DocumentId,request.ManualRevisionId,Guid.NewGuid(),"line 1","pump"),Enumerable.Repeat(1f,256).ToArray());
         await Assert.ThrowsAsync<InvalidOperationException>(()=>Store().ReplaceRevisionAsync(new(request.DocumentId,request.ManualRevisionId,space.Profile,[chunk],attempt.Id),default));
         Assert.Empty(await Store().RetrieveAsync(new("pump",5,request.DocumentId,request.ManualRevisionId),RetrievalMode.Keyword,default));
     }
@@ -81,7 +81,7 @@ public class IngestionPersistenceTests(KnowledgeDatabase database) : IClassFixtu
         var reports=new PostgresIngestionReports(database.ConnectionString);var request=new DocumentProcessingRequest(Guid.NewGuid(),Guid.NewGuid(),"text/plain");
         await Ingest(Service(),request,"pump original"u8.ToArray());
         await using var attempt=await reports.BeginAsync(request,default);await attempt.AdvanceAsync(IngestionStage.Indexing,null,1,default);
-        var chunk=new IndexedChunk(new(request.DocumentId,request.ManualRevisionId,Guid.NewGuid(),"line 1","pump replacement"),Enumerable.Repeat(1f,32).ToArray());
+        var chunk=new IndexedChunk(new(request.DocumentId,request.ManualRevisionId,Guid.NewGuid(),"line 1","pump replacement"),Enumerable.Repeat(1f,256).ToArray());
         // Wrong attempt identity fails AFTER the replacement inserts, proving the transaction rolls them back.
         await Assert.ThrowsAsync<InvalidOperationException>(()=>Store().ReplaceRevisionAsync(new(request.DocumentId,request.ManualRevisionId,space.Profile,[chunk],Guid.NewGuid()),default));
         Assert.Equal("pump original",Assert.Single(await Store().RetrieveAsync(new("pump",5,request.DocumentId,request.ManualRevisionId),RetrievalMode.Keyword,default)).Snippet);

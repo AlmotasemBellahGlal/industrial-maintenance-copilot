@@ -1,4 +1,4 @@
-using IndustrialCopilot.Application.Abstractions.AI;
+﻿using IndustrialCopilot.Application.Abstractions.AI;
 using IndustrialCopilot.Application.Abstractions.AI.Models;
 using IndustrialCopilot.Application.Abstractions.Documents.Models;
 using IndustrialCopilot.Application.Abstractions.Indexing.Models;
@@ -201,5 +201,84 @@ public class PostgresKnowledgeTests(KnowledgeDatabase database) : IClassFixture<
         var results = await store.RetrieveAsync(new("pump", 5, doc, rev), RetrievalMode.Hybrid, default);
         Assert.NotEmpty(results);
         Assert.All(results, r => { Assert.Equal(doc, r.DocumentId); Assert.Equal(rev, r.ManualRevisionId); Assert.StartsWith("text:lines", r.Locator); Assert.NotEmpty(r.Snippet); });
+    }
+}
+
+public class KeywordQueryTests(KnowledgeDatabase database) : IClassFixture<KnowledgeDatabase>
+{
+    private sealed class ConstantEmbeddings : ILlmProvider
+    {
+        public Task<EmbeddingResult> GenerateEmbeddingsAsync(EmbeddingRequest request, CancellationToken token) =>
+            Task.FromResult(new EmbeddingResult(request.Inputs.Select(_ => (IReadOnlyList<float>)new float[] { 1, 0 }).ToArray(), "test-model"));
+        public Task<CompletionResponse> CompleteAsync(CompletionRequest r, CancellationToken t) => throw new NotSupportedException();
+        public Task<ToolCompletionResponse> CompleteWithToolsAsync(CompletionRequest r, IReadOnlyList<ToolDefinition> t, CancellationToken c) => throw new NotSupportedException();
+        public IAsyncEnumerable<StreamingChunk> StreamAsync(CompletionRequest r, CancellationToken t) => throw new NotSupportedException();
+    }
+
+    private PostgresKnowledgeStore Store() =>
+        new(database.Source, new KnowledgeStoreOptions(new EmbeddingSpace("keyword-test", "test-model", 2), "kw-binding"), new ConstantEmbeddings());
+
+    private static IndexedChunk Chunk(Guid doc, Guid rev, int id, string content) =>
+        new(new(doc, rev, Guid.Parse($"00000000-0000-0000-0000-{id:000000000000}"), $"loc-{id}", content), new float[] { 1, 0 });
+
+    /// <summary>
+    /// websearch_to_tsquery supports richer query syntax than plainto_tsquery:
+    /// explicit OR operators, quoted phrases, and NOT.
+    /// Unquoted terms without explicit OR are AND-ed (same as plainto_tsquery).
+    /// This test verifies explicit OR syntax: "seal OR temperature" matches chunks
+    /// containing either term, which plainto_tsquery('simple', 'seal OR temperature')
+    /// would not handle correctly (it would treat OR as a literal token).
+    /// </summary>
+    [PostgresFact]
+    public async Task WebsearchOrSyntaxFindsChunksContainingAnyExplicitOrTerm()
+    {
+        var doc = Guid.NewGuid(); var rev = Guid.NewGuid(); var store = Store();
+        await store.ReplaceRevisionAsync(new(doc, rev, "keyword-test", [
+            Chunk(doc, rev, 1, "seal leakage inspection pump"),
+            Chunk(doc, rev, 2, "motor overheating baseline temperature")
+        ]), default);
+
+        // Explicit OR in websearch_to_tsquery syntax.
+        // plainto_tsquery would treat "OR" as a literal token; websearch_to_tsquery treats it as an operator.
+        var results = await store.RetrieveAsync(
+            new("seal OR temperature", 5, doc, rev),
+            RetrievalMode.Keyword, default);
+
+        // Both chunks should be found: one has 'seal', the other has 'temperature'.
+        Assert.Equal(2, results.Count);
+        Assert.Contains(results, r => r.Snippet.Contains("seal"));
+        Assert.Contains(results, r => r.Snippet.Contains("temperature"));
+    }
+
+        [PostgresFact]
+    public async Task SingleTermQueryStillMatchesExistingBehavior()
+    {
+        var doc = Guid.NewGuid(); var rev = Guid.NewGuid(); var store = Store();
+        await store.ReplaceRevisionAsync(new(doc, rev, "keyword-test", [
+            Chunk(doc, rev, 1, "pump seal leakage"),
+            Chunk(doc, rev, 2, "motor bearing vibration")
+        ]), default);
+
+        var results = await store.RetrieveAsync(new("pump", 5, doc, rev), RetrievalMode.Keyword, default);
+        Assert.Single(results);
+        Assert.Contains("pump", results[0].Snippet);
+    }
+
+    /// <summary>
+    /// SQL injection via the query text must not execute. websearch_to_tsquery passes the
+    /// query as a parameterized value, not interpolated SQL.
+    /// </summary>
+    [PostgresFact]
+    public async Task SqlInjectionInNaturalLanguageQueryDoesNotExecute()
+    {
+        var doc = Guid.NewGuid(); var rev = Guid.NewGuid(); var store = Store();
+        await store.ReplaceRevisionAsync(new(doc, rev, "keyword-test", [Chunk(doc, rev, 1, "pump")]), default);
+
+        // Should return empty, not throw and not execute SQL.
+        var results = await store.RetrieveAsync(
+            new("'; DROP TABLE knowledge.chunks; -- pump", 5, doc, rev),
+            RetrievalMode.Keyword, default);
+        // "pump" should still be retrievable after the malicious query.
+        Assert.Single(await store.RetrieveAsync(new("pump", 5, doc, rev), RetrievalMode.Keyword, default));
     }
 }

@@ -27,7 +27,7 @@ public class EvaluationSmokeTests(KnowledgeDatabase database):IClassFixture<Know
         // Quality misses are retained, not a failing harness. Do not assert a minimum score.
         Assert.Equal(first.Results.Count(r=>r.Actual==ObservedOutcome.Answer),first.Summary.Groundedness.Denominator);
         Assert.All(first.Results.SelectMany(r=>r.Rankings),r=>Assert.True(r.Evidence.Count<=r.TopK));
-        await using(var contaminate=database.Source.CreateCommand("INSERT INTO knowledge.revisions(document_id,revision_id,profile,dimensions) VALUES(@doc,@rev,'assessment-corpus-v1',32)"))
+        await using(var contaminate=database.Source.CreateCommand("INSERT INTO knowledge.revisions(document_id,revision_id,profile,dimensions) VALUES(@doc,@rev,'assessment-corpus-v1',256)"))
         {
             contaminate.Parameters.AddWithValue("doc",Guid.NewGuid());contaminate.Parameters.AddWithValue("rev",Guid.NewGuid());
             await contaminate.ExecuteNonQueryAsync();
