@@ -1,0 +1,10 @@
+# gitleaks allowlist for known-safe documentation examples.
+# Each entry is a fingerprint of a finding that is a documentation placeholder,
+# not a real credential. Format: commit:file:rule:line
+#
+# These are curl example commands in the teaching pack that use placeholder tokens
+# like YOUR_SUPERVISOR_TOKEN. They are not real credentials.
+
+3fd3760bb612fcf9d83d7036766d28c4af1b98a3:teaching/lab-guide.md:curl-auth-header:138
+3fd3760bb612fcf9d83d7036766d28c4af1b98a3:teaching/stretch-challenges.md:curl-auth-header:85
+3fd3760bb612fcf9d83d7036766d28c4af1b98a3:teaching/stretch-challenges.md:curl-auth-header:96

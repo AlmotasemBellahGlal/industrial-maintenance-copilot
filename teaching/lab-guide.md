@@ -136,7 +136,7 @@ D. What are the `tokens` and `estimatedCost` values in the usage record? Why?
 ```sh
 # Replace {id} with your actual work order ID from the trace
 curl -X POST http://127.0.0.1:8080/api/work-orders/{id}/dispatch \
-  -H "Authorization: Bearer YOUR_SUPERVISOR_TOKEN" \
+  -H "Authorization: Bearer $(cat artifacts/packaging-supervisor.txt)" \
   -H "Content-Type: application/json" \
   -d '{"revision": 1}'
 ```

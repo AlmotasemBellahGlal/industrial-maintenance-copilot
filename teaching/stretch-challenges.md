@@ -87,14 +87,14 @@ the same time:
 ```sh
 # Terminal 1:
 curl -X POST http://127.0.0.1:8080/api/jobs \
-  -H "Authorization: Bearer YOUR_SUPERVISOR_TOKEN" \
+  -H "Authorization: Bearer $(cat artifacts/packaging-supervisor.txt)" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: job-a-$(date +%s)" \
   -d '{"equipmentId":"11111111-1111-1111-1111-111111111111","symptom":"pump vibration"}'
 
 # Terminal 2 (simultaneously):
 curl -X POST http://127.0.0.1:8080/api/jobs \
-  -H "Authorization: Bearer YOUR_SUPERVISOR_TOKEN" \
+  -H "Authorization: Bearer $(cat artifacts/packaging-supervisor.txt)" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: job-b-$(date +%s)" \
   -d '{"equipmentId":"11111111-1111-1111-1111-111111111111","symptom":"pump vibration"}'
