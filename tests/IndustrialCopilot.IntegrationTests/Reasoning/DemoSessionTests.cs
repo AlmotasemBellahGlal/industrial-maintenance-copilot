@@ -269,6 +269,43 @@ public class DemoSessionTests(KnowledgeDatabase database):IClassFixture<Knowledg
         await Do("INSERT INTO operations.traces(execution_id,correlation_id,run_id,version,payload) VALUES(gen_random_uuid(),gen_random_uuid(),@r,1,'{}')");
         await tx.CommitAsync();
     }
+
+    [Fact]
+    public async Task WorkerAuthorizesOnlyLiveVisitorSessionsOnTheDemoEquipment()
+    {
+        await using var h=await Start([]);
+        var scope=h.App.Services.GetRequiredService<IndustrialCopilot.Application.Abstractions.Jobs.IReasoningJobExecutionScope>();
+        var store=h.App.Services.GetRequiredService<IndustrialCopilot.Application.Abstractions.Jobs.IReasoningJobStore>();
+        var minted=await Mint(h,"203.0.113.50");var visitor=As(h,minted.Token!);
+        Assert.Equal(HttpStatusCode.Accepted,(await Submit(h,visitor,"worker-auth")).StatusCode);
+        var claim=(await store.ClaimAsync("worker",[h.Equipment],TimeSpan.FromSeconds(30),default))!;
+        Assert.StartsWith("visitor-",claim.ActorId);
+        // The real job path: a live visitor session is authorized with read+start only.
+        scope.Enter(claim).Dispose();
+        // Not just the prefix: a visitor-looking actor with no session row is refused.
+        Assert.Throws<UnauthorizedAccessException>(()=>scope.Enter(claim with{ActorId="visitor-"+new string('0',32)}));
+        // Expiry right after a positive check: the same session is refused at once, with no stale positive answer.
+        scope.Enter(claim).Dispose();
+        await using(var cmd=database.Source.CreateCommand("UPDATE operations.demo_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE actor=@a")){cmd.Parameters.AddWithValue("a",claim.ActorId);await cmd.ExecuteNonQueryAsync();}
+        Assert.Throws<UnauthorizedAccessException>(()=>scope.Enter(claim));
+        // The real processor turns that denial into a Failed job (terminal), which is what lets cleanup purge the expired session.
+        var processor=new IndustrialCopilot.Application.Jobs.ReasoningJobProcessor(store,null!,scope);
+        await processor.ExecuteAsync(claim,TimeSpan.FromSeconds(30),default);
+        var failed=(await store.GetAsync(claim.JobId,default))!;
+        Assert.Equal(IndustrialCopilot.Application.Abstractions.Jobs.ReasoningJobStatus.Failed,failed.Status);
+        Assert.Equal("reasoning_failed",failed.FailureCode);
+        var purged=await h.App.Services.GetRequiredService<IDemoSessions>().PurgeExpiredAsync(10,default);
+        Assert.True(purged>=1);
+        Assert.Equal(0,await Count("SELECT count(*) FROM operations.reasoning_jobs WHERE actor=@a",("a",claim.ActorId)));
+        // A deleted session also stays refused.
+        Assert.Throws<UnauthorizedAccessException>(()=>scope.Enter(claim));
+        // A configured operator credential still works as before.
+        scope.Enter(claim with{ActorId="operator"}).Dispose();
+        // With public sessions disabled the visitor path is closed.
+        await using var off=await Start(new(){["Demo:PublicSessions"]="false"});
+        var offScope=off.App.Services.GetRequiredService<IndustrialCopilot.Application.Abstractions.Jobs.IReasoningJobExecutionScope>();
+        Assert.Throws<UnauthorizedAccessException>(()=>offScope.Enter(claim with{ActorId=claim.ActorId}));
+    }
 }
 
 internal static class PostgresDemoSessionsLimits
