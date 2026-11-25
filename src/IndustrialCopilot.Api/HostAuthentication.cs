@@ -10,22 +10,28 @@ namespace IndustrialCopilot.Api;
 
 public sealed record HostCredential(string Actor,string Secret,IReadOnlySet<string> Permissions,IReadOnlySet<Guid> Equipment)
 { public override string ToString() => "HostCredential [redacted]"; }
-public sealed class HostAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options,ILoggerFactory logger,UrlEncoder encoder,IReadOnlyList<HostCredential> credentials)
+/// <summary>Fixed rights of anonymous demo visitors. Present only when public sessions are enabled.</summary>
+public sealed record DemoSessionPolicy(IReadOnlySet<string> Permissions,IReadOnlySet<Guid> Equipment);
+public sealed class HostAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options,ILoggerFactory logger,UrlEncoder encoder,IReadOnlyList<HostCredential> credentials,IDemoSessions? sessions=null,DemoSessionPolicy? policy=null)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options,logger,encoder)
 {
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var header=Request.Headers.Authorization.ToString();
-        if(!header.StartsWith("Bearer ",StringComparison.Ordinal)) return Task.FromResult(AuthenticateResult.NoResult());
+        if(!header.StartsWith("Bearer ",StringComparison.Ordinal)) return AuthenticateResult.NoResult();
         var secret=header[7..];
-        if(secret.Length>512) return Task.FromResult(AuthenticateResult.Fail("Invalid credential."));
+        if(secret.Length>512) return AuthenticateResult.Fail("Invalid credential.");
         var digest=SHA256.HashData(Encoding.UTF8.GetBytes(secret));
         var credential=credentials.FirstOrDefault(c=>CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(c.Secret)),digest));
-        if(credential is null) return Task.FromResult(AuthenticateResult.Fail("Invalid credential."));
-        var claims=new List<Claim>{new(ClaimTypes.NameIdentifier,credential.Actor)};
-        claims.AddRange(credential.Permissions.Select(p=>new Claim("permission",p)));
-        claims.AddRange(credential.Equipment.Select(e=>new Claim("equipment",e.ToString("D"))));
-        return Task.FromResult(AuthenticateResult.Success(new(new ClaimsPrincipal(new ClaimsIdentity(claims,Scheme.Name)),Scheme.Name)));
+        string actor; IReadOnlySet<string> permissions; IReadOnlySet<Guid> equipment;
+        if(credential is not null) (actor,permissions,equipment)=(credential.Actor,credential.Permissions,credential.Equipment);
+        else if(sessions is not null && policy is not null && PostgresDemoSessions.LooksLikeSecret(secret) && await sessions.AuthenticateAsync(secret,Context.RequestAborted) is {} visitor)
+            (actor,permissions,equipment)=(visitor,policy.Permissions,policy.Equipment);
+        else return AuthenticateResult.Fail("Invalid credential.");
+        var claims=new List<Claim>{new(ClaimTypes.NameIdentifier,actor)};
+        claims.AddRange(permissions.Select(p=>new Claim("permission",p)));
+        claims.AddRange(equipment.Select(e=>new Claim("equipment",e.ToString("D"))));
+        return AuthenticateResult.Success(new(new ClaimsPrincipal(new ClaimsIdentity(claims,Scheme.Name)),Scheme.Name));
     }
     public static HostIdentity? Identity(HttpContext? context)
     {
@@ -45,4 +51,4 @@ public sealed class HostAuthentication(IOptionsMonitor<AuthenticationSchemeOptio
         if(result.Count==0 || result.Select(c=>c.Actor).Distinct().Count()!=result.Count || result.Select(c=>c.Secret).Distinct().Count()!=result.Count) throw new InvalidOperationException("Unique authenticated host credentials are required.");
         return result.AsReadOnly();
     }
-}
+    }
