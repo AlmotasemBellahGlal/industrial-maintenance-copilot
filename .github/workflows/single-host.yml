@@ -1,0 +1,103 @@
+name: Single host (demo only)
+
+# Validates the opt-in single-process demo host. It does not prove IIS, MonsterASP.NET or any hosting provider.
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  pooled-postgres:
+    name: Single host through PgBouncer transaction pooling (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: isolated_ci_only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: src/IndustrialCopilot.Web/package-lock.json
+      - name: Build the web app
+        working-directory: src/IndustrialCopilot.Web
+        run: |
+          npm ci
+          npm run build
+      - name: Publish the single host with the web app
+        run: |
+          dotnet publish tools/IndustrialCopilot.SingleHost -c Release -o out
+          cp -r src/IndustrialCopilot.Web/dist/industrial-copilot-web/browser out/wwwroot
+      - name: Start PgBouncer in transaction mode
+        run: |
+          sudo apt-get update && sudo apt-get install -y pgbouncer
+          cat > pgb.ini <<'INI'
+          [databases]
+          single = host=127.0.0.1 port=5432 dbname=single user=postgres password=isolated_ci_only
+          [pgbouncer]
+          listen_addr = 127.0.0.1
+          listen_port = 6432
+          auth_type = trust
+          pool_mode = transaction
+          max_client_conn = 100
+          default_pool_size = 10
+          admin_users = postgres
+          INI
+          PGPASSWORD=isolated_ci_only psql -h 127.0.0.1 -U postgres -d postgres -c 'CREATE DATABASE single'
+          PGPASSWORD=isolated_ci_only psql -h 127.0.0.1 -U postgres -d single -c 'CREATE EXTENSION IF NOT EXISTS vector'
+          sed -i 's/^ *//' pgb.ini
+          pgbouncer -d pgb.ini
+          sleep 2
+      - name: Init and run the host over HTTPS
+        env:
+          DEMO_SINGLE_HOST: 'true'
+          ASPNETCORE_ENVIRONMENT: Production
+          ConnectionStrings__Operations: Host=127.0.0.1;Port=6432;Database=single;Username=postgres
+          ASPNETCORE_URLS: https://127.0.0.1:5443
+          ASPNETCORE_Kestrel__Certificates__Default__Path: ${{ github.workspace }}/t.pfx
+          ASPNETCORE_Kestrel__Certificates__Default__Password: ci-only
+          DEMO_TRUSTED_PROXY_CIDR: 127.0.0.0/8
+          DEMO_MAX_LIVE_SESSIONS: '10'
+        run: |
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout k.pem -out c.pem -days 1 -subj /CN=localhost
+          openssl pkcs12 -export -out t.pfx -inkey k.pem -in c.pem -passout pass:ci-only
+          cd out
+          dotnet IndustrialCopilot.SingleHost.dll --init
+          dotnet IndustrialCopilot.SingleHost.dll > ../host.log 2>&1 &
+          sleep 8
+          cd ..
+          BASE=https://127.0.0.1:5443 NODE_TLS_REJECT_UNAUTHORIZED=0 node tools/single-host-smoke.mjs
+      - name: Host log (no secrets are logged)
+        if: failure()
+        run: tail -n 80 host.log
+
+  windows-publish:
+    name: Windows publish shape for IIS in-process hosting (not an IIS run)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish and inspect the IIS in-process shape
+        shell: pwsh
+        run: |
+          dotnet publish tools/IndustrialCopilot.SingleHost -c Release -r win-x64 --self-contained false -o out
+          $cfg = Get-Content out/web.config -Raw
+          if ($cfg -notmatch 'AspNetCoreModuleV2' -or $cfg -notmatch 'hostingModel="inprocess"') { throw 'web.config is not IIS in-process' }
+          foreach ($f in 'IndustrialCopilot.SingleHost.dll','demo/reviewed-procedures.json','demo/pump-manual.txt') { if (-not (Test-Path "out/$f")) { throw "missing $f" } }
+          Write-Output 'Publish shape OK. This does not run IIS.'
