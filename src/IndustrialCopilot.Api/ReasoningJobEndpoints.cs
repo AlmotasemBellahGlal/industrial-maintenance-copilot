@@ -13,6 +13,9 @@ public static class ReasoningJobEndpoints
         var actor=HostAuthentication.Identity(c)??throw new ApiProblemException(401,"unauthenticated");
         if(!actor.Permissions.Contains(permission)||!actor.Permissions.Contains("read")||!actor.Equipment.Contains(job.EquipmentId))
             throw new ApiProblemException(403,"forbidden");
+        // Owner-scoped: a job is visible only to the actor that submitted it. Approvers may inspect any job on their equipment.
+        if(!actor.Permissions.Contains("approve") && !string.Equals(job.Actor,actor.Actor,StringComparison.Ordinal))
+            throw new ApiProblemException(403,"forbidden");
         return job;
     }
     private static object View(ReasoningJobSnapshot j)=>new {j.JobId,j.MaintenanceRunId,j.EquipmentId,j.CorrelationId,
@@ -29,6 +32,7 @@ public static class ReasoningJobEndpoints
             ReasoningJobSnapshot job;
             try { job=await Store(c).SubmitAsync(submission,c.RequestAborted); }
             catch(JobSubmissionConflictException) {throw new ApiProblemException(409,"submission_conflict");}
+            catch(JobCapacityException) {c.Response.Headers.RetryAfter="30";throw new ApiProblemException(429,"rate_limited");}
             c.Response.Headers.Location=$"/api/jobs/{job.JobId}";
             return Results.Json(View(job),statusCode:202);
         });
