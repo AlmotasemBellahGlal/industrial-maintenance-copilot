@@ -1,0 +1,16 @@
+# UNTESTED. TLS front for a single-host public demo. Set DEMO_DOMAIN in .env.
+{$DEMO_DOMAIN} {
+	encode zstd gzip
+	# Development-mode API exposes OpenAPI; never serve it publicly.
+	@openapi path /openapi* /api/openapi* /scalar*
+	respond @openapi 404
+	# Operator-only endpoints are not exposed. Health stays internal.
+	@health path /health/*
+	respond @health 404
+	request_body {
+		max_size 256KB
+	}
+	reverse_proxy web:8080 {
+		header_up X-Forwarded-For {remote_host}
+	}
+}
