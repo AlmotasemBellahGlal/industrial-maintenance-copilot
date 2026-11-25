@@ -158,3 +158,18 @@ internal static class DemoGrowth
         if(kind=="turn"&&(r.GetInt64(1)>=MaxTurnsPerSession||r.GetInt64(2)>=MaxTurnsPerConversation)) throw new DemoLimitException("turns");
     }
 }
+
+/// <summary>
+/// Synchronous liveness check for the worker's job authorization. No caching: every answer is read from the
+/// session row against the database clock, so an identity is never returned at or after expires_at and a deleted
+/// session stops authorizing immediately. One primary-key lookup per check.
+/// </summary>
+public sealed class VisitorSessionCheck(NpgsqlDataSource source)
+{
+    public bool IsLive(string actor)
+    {
+        using var cmd=source.CreateCommand("SELECT 1 FROM operations.demo_sessions WHERE actor=@a AND expires_at>clock_timestamp()");
+        cmd.Parameters.AddWithValue("a",actor);
+        return cmd.ExecuteScalar() is not null;
+    }
+}
