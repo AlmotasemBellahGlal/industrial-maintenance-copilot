@@ -16,6 +16,8 @@ export const arabic: Readonly<Record<string, string>> = {
   TimedOut: 'انتهت المهلة',
   Conflict: 'تعارض',
   NotDispatchable: 'غير مؤهل للإرسال',
+  'Synthetic demo: scripted test data and a test provider, not a real AI model. Answers outside the sample scenarios are not representative. Not for real equipment.':
+    'نسخة تجريبية: بيانات اختبار ومزوّد اختبار، وليست نموذج ذكاء اصطناعي حقيقي. الإجابات خارج السيناريوهات النموذجية غير ممثلة. غير مخصصة لمعدات حقيقية.',
   'Skip to main content': 'انتقل إلى المحتوى الرئيسي',
   'Maintenance Copilot home': 'الصفحة الرئيسية لمساعد الصيانة',
   MAINTENANCE: 'الصيانة',
