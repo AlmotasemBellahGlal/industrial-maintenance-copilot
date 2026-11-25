@@ -33,6 +33,9 @@ public sealed class OperationalSchema(NpgsqlDataSource source)
             using var usageResource = typeof(OperationalSchema).Assembly.GetManifestResourceStream("IndustrialCopilot.Infrastructure.Operations.Migrations.007_llm_usage.sql")!;
             using var usageReader = new StreamReader(usageResource);
             await OperationalSql.Execute(connection, transaction, await usageReader.ReadToEndAsync(token), token);
+            using var ownerResource = typeof(OperationalSchema).Assembly.GetManifestResourceStream("IndustrialCopilot.Infrastructure.Operations.Migrations.008_run_owners.sql")!;
+            using var ownerReader = new StreamReader(ownerResource);
+            await OperationalSql.Execute(connection, transaction, await ownerReader.ReadToEndAsync(token), token);
             return true;
         }, token);
     }
