@@ -10,6 +10,8 @@ public sealed record ReasoningJobSnapshot(Guid JobId, Guid MaintenanceRunId, Gui
     ReasoningJobStatus Status, ReasoningJobPhase Phase, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
     bool CancellationRequested, long Version, IReadOnlyList<ReasoningJobAttempt> Attempts, MaintenanceReasoningResult? Result, string? FailureCode)
 {
+    /// <summary>Submitting actor. Null only for snapshots built outside the Postgres store.</summary>
+    public string? Actor { get; init; }
     public bool IsTerminal => Status is ReasoningJobStatus.Succeeded or ReasoningJobStatus.Failed or ReasoningJobStatus.Cancelled;
 }
 public sealed class ReasoningJobSubmission
@@ -29,6 +31,7 @@ public sealed class ReasoningJobSubmission
 }
 public sealed record ReasoningJobEvent(long Sequence,Guid ExecutionId,MaintenanceProgress Progress);
 public sealed record ReasoningJobClaim(Guid JobId, Guid LeaseToken, string Owner, int Attempt, string ActorId, MaintenanceReasoningRequest Request);
+public sealed class JobCapacityException() : Exception("Active reasoning job capacity reached.");
 public sealed class JobSubmissionConflictException() : Exception("Idempotency key is already bound to a different request.");
 public sealed class JobLeaseLostException() : Exception("Reasoning job ownership is no longer valid.");
 public sealed class JobCancellationConflictException() : Exception("Reasoning has already reached its terminal business boundary.");
