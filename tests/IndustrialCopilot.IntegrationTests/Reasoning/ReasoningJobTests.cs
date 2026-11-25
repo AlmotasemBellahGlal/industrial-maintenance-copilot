@@ -14,6 +14,8 @@ namespace IndustrialCopilot.IntegrationTests.Reasoning;
 
 public class ReasoningJobTests(KnowledgeDatabase database):IClassFixture<KnowledgeDatabase>
 {
+    /// <summary>Each submission gets its own actor so the per-actor active-job cap never depends on jobs left queued by other tests in this shared database.</summary>
+    private static string NewActor()=>"actor-"+Guid.NewGuid();
     private PostgresReasoningJobStore Jobs=>new(database.Source);
     private async Task<MaintenanceReasoningRequest> Request(string culture="en-US")
     {
@@ -40,8 +42,8 @@ public class ReasoningJobTests(KnowledgeDatabase database):IClassFixture<Knowled
     [PostgresFact]
     public async Task HostedWorkerClaimsOnlyCapacityAndGracefulStopReturnsUnfinishedWorkWithoutCancellingBusinessRun()
     {
-        var r=await Request();var second=await Request();var j=await Jobs.SubmitAsync(new("actor",r.RunId.ToString(),r),default);
-        var other=await Jobs.SubmitAsync(new("actor",second.RunId.ToString(),second),default);
+        var r=await Request();var second=await Request();var j=await Jobs.SubmitAsync(new(NewActor(),r.RunId.ToString(),r),default);
+        var other=await Jobs.SubmitAsync(new(NewActor(),second.RunId.ToString(),second),default);
         var scope=new ReasoningJobExecutionScope((_,_)=>true);var workflows=new PostgresWorkflowStore(database.Source,scope);
         var provider=new PausedProvider();var candidate=r.Input.Candidates[0];
         var knowledge=new PostgresKnowledgeStore(database.Source,new(new EmbeddingSpace("paused","unused",2),"binding"),provider);
@@ -60,19 +62,19 @@ public class ReasoningJobTests(KnowledgeDatabase database):IClassFixture<Knowled
     [PostgresFact]
     public async Task ConcurrentEquivalentSubmissionsConvergeAndDifferentPayloadConflicts()
     {
-        var r=await Request();var key=Guid.NewGuid().ToString();
-        var all=await Task.WhenAll(Enumerable.Range(0,12).Select(_=>Jobs.SubmitAsync(new("actor",key,r),default)));
+        var actor=NewActor();var r=await Request();var key=Guid.NewGuid().ToString();
+        var all=await Task.WhenAll(Enumerable.Range(0,12).Select(_=>Jobs.SubmitAsync(new(actor,key,r),default)));
         Assert.Single(all.Select(j=>j.JobId).Distinct());Assert.All(all,j=>Assert.Equal(ReasoningJobStatus.Queued,j.Status));
         var freshIds=new MaintenanceReasoningRequest(Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),r.Input);
-        Assert.Equal(all[0].JobId,(await Jobs.SubmitAsync(new("actor",key,freshIds),default)).JobId);
+        Assert.Equal(all[0].JobId,(await Jobs.SubmitAsync(new(actor,key,freshIds),default)).JobId);
         var changed=new MaintenanceReasoningRequest(Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),new("other symptom",r.Input.Candidates,[]));
-        await Assert.ThrowsAsync<JobSubmissionConflictException>(()=>Jobs.SubmitAsync(new("actor",key,changed),default));
+        await Assert.ThrowsAsync<JobSubmissionConflictException>(()=>Jobs.SubmitAsync(new(actor,key,changed),default));
         Assert.Equal(MaintenanceRunStatus.Queued,(await new PostgresWorkflowStore(database.Source).GetRunAsync(r.RunId,default))!.Run.Status);
     }
     [PostgresFact]
     public async Task OneValidOwnerExpiredOwnerFencedAndRecoveryGetsSeparateExecution()
     {
-        var r=await Request("ar-EG");var j=await Jobs.SubmitAsync(new("actor","key",r),default);
+        var r=await Request("ar-EG");var j=await Jobs.SubmitAsync(new(NewActor(),"key",r),default);
         var claims=await Task.WhenAll(Enumerable.Range(0,10).Select(_=>Claim(r)));var old=Assert.Single(claims,c=>c is not null)!;
         Assert.Equal("ar-EG",old.Request.ResponseCulture);
         await Expire(j.JobId);var fresh=(await Claim(r))!;
@@ -92,7 +94,7 @@ public class ReasoningJobTests(KnowledgeDatabase database):IClassFixture<Knowled
     {
         foreach(var running in new[]{false,true})
         {
-            var r=await Request();var j=await Jobs.SubmitAsync(new("actor",r.RunId.ToString(),r),default);
+            var r=await Request();var j=await Jobs.SubmitAsync(new(NewActor(),r.RunId.ToString(),r),default);
             var claim=running?await Claim(r):null;
             var cancelled=(await Jobs.RequestCancellationAsync(j.JobId,default))!;Assert.True(cancelled.CancellationRequested);
             if(claim is not null)
@@ -109,7 +111,7 @@ public class ReasoningJobTests(KnowledgeDatabase database):IClassFixture<Knowled
     [PostgresFact]
     public async Task RecoveryAttemptsAreBoundedAndGracefulReleaseHasBackoff()
     {
-        var r=await Request();var j=await Jobs.SubmitAsync(new("actor","bounded",r),default);
+        var r=await Request();var j=await Jobs.SubmitAsync(new(NewActor(),"bounded",r),default);
         var first=(await Claim(r))!;await Jobs.ReleaseAsync(first,default);Assert.Null(await Claim(r));
         await Expire(j.JobId);
         for(var number=2;number<=3;number++)
@@ -122,7 +124,7 @@ public class ReasoningJobTests(KnowledgeDatabase database):IClassFixture<Knowled
     {
         foreach(var culture in new[]{"en-US","ar-EG"})
         {
-            var r=await Request(culture);var j=await Jobs.SubmitAsync(new("actor",r.RunId.ToString(),r),default);var first=(await Claim(r))!;
+            var r=await Request(culture);var j=await Jobs.SubmitAsync(new(NewActor(),r.RunId.ToString(),r),default);var first=(await Claim(r))!;
             var scope=new ReasoningJobExecutionScope((_,_)=>true);var workflows=new PostgresWorkflowStore(database.Source,scope);
             // Crash after starting the business run. The next attempt replays the pipeline from this safe boundary.
             var run=(await workflows.GetRunAsync(r.RunId,default))!;run.Run.Start();
