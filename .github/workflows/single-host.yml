@@ -45,13 +45,20 @@ jobs:
       - name: Start PgBouncer in transaction mode
         run: |
           sudo apt-get update && sudo apt-get install -y pgbouncer
+          sudo systemctl stop pgbouncer || true
+          printf '%s\n' '"postgres" ""' > userlist.txt
           cat > pgb.ini <<'INI'
           [databases]
           single = host=127.0.0.1 port=5432 dbname=single user=postgres password=isolated_ci_only
           [pgbouncer]
           listen_addr = 127.0.0.1
-          listen_port = 6432
+          listen_port = 6439
+          logfile = ${{ github.workspace }}/pgb.log
+          pidfile = ${{ github.workspace }}/pgb.pid
+          unix_socket_dir =
           auth_type = trust
+          auth_file = ${{ github.workspace }}/userlist.txt
+          ignore_startup_parameters = extra_float_digits,options
           pool_mode = transaction
           max_client_conn = 100
           default_pool_size = 10
@@ -60,13 +67,14 @@ jobs:
           PGPASSWORD=isolated_ci_only psql -h 127.0.0.1 -U postgres -d postgres -c 'CREATE DATABASE single'
           PGPASSWORD=isolated_ci_only psql -h 127.0.0.1 -U postgres -d single -c 'CREATE EXTENSION IF NOT EXISTS vector'
           sed -i 's/^ *//' pgb.ini
-          pgbouncer -d pgb.ini
+          pgbouncer -d pgb.ini || { cat pgb.log; exit 1; }
           sleep 2
+          PGPASSWORD=x psql -h 127.0.0.1 -p 6439 -U postgres -d single -c 'select 1' || { cat pgb.log; exit 1; }
       - name: Init and run the host over HTTPS
         env:
           DEMO_SINGLE_HOST: 'true'
           ASPNETCORE_ENVIRONMENT: Production
-          ConnectionStrings__Operations: Host=127.0.0.1;Port=6432;Database=single;Username=postgres
+          ConnectionStrings__Operations: Host=127.0.0.1;Port=6439;Database=single;Username=postgres
           ASPNETCORE_URLS: https://127.0.0.1:5443
           ASPNETCORE_Kestrel__Certificates__Default__Path: ${{ github.workspace }}/t.pfx
           ASPNETCORE_Kestrel__Certificates__Default__Password: ci-only
@@ -83,7 +91,9 @@ jobs:
           BASE=https://127.0.0.1:5443 NODE_TLS_REJECT_UNAUTHORIZED=0 node tools/single-host-smoke.mjs
       - name: Host log (no secrets are logged)
         if: failure()
-        run: tail -n 80 host.log
+        run: |
+          tail -n 80 host.log || true
+          tail -n 40 pgb.log || true
 
   windows-publish:
     name: Windows publish shape for IIS in-process hosting (not an IIS run)
