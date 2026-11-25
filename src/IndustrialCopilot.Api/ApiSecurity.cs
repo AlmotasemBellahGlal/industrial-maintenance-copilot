@@ -20,15 +20,29 @@ internal static class ApiSecurity
         var seconds = Read("WindowSeconds", 60, 1, 3600);
         builder.Services.AddRateLimiter(options =>
         {
-            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+            // Anonymous session minting has its own budgets so a mint flood can neither spend any actor's budget
+            // nor share the "anonymous" bucket with other unauthenticated calls.
+            static bool IsMint(HttpContext context)=>HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals(DemoSessionEndpoints.Route,StringComparison.OrdinalIgnoreCase);
+            var mintPerClient = Read("MintPermitsPerClientPerMinute", 6, 1, 600);
+            var mintGlobal = Read("MintPermitsPerMinute", 120, 1, 6000);
+            var actorLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
             {
-                if (!context.Request.Path.StartsWithSegments("/api") || !HttpMethods.IsPost(context.Request.Method))
+                if (IsMint(context) || !context.Request.Path.StartsWithSegments("/api") || !HttpMethods.IsPost(context.Request.Method))
                     return RateLimitPartition.GetNoLimiter("unmetered");
                 // Resource IDs are not partition keys: rotating IDs must not evade the actor budget.
                 var actor = context.User.Identity?.IsAuthenticated == true ? context.User.FindFirstValue(ClaimTypes.NameIdentifier)! : "anonymous";
                 return RateLimitPartition.GetFixedWindowLimiter(actor, _ => new FixedWindowRateLimiterOptions
                 { PermitLimit = permits, Window = TimeSpan.FromSeconds(seconds), QueueLimit = 0, AutoReplenishment = true });
             });
+            var mintClientLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+                !IsMint(context) ? RateLimitPartition.GetNoLimiter("unmetered")
+                : RateLimitPartition.GetFixedWindowLimiter("mint-client:" + context.Connection.RemoteIpAddress, _ => new FixedWindowRateLimiterOptions
+                { PermitLimit = mintPerClient, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
+            var mintGlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+                !IsMint(context) ? RateLimitPartition.GetNoLimiter("unmetered")
+                : RateLimitPartition.GetFixedWindowLimiter("mint-global", _ => new FixedWindowRateLimiterOptions
+                { PermitLimit = mintGlobal, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
+            options.GlobalLimiter = PartitionedRateLimiter.CreateChained(actorLimiter, mintClientLimiter, mintGlobalLimiter);
             options.OnRejected = async (rejection, token) =>
             {
                 var context = rejection.HttpContext;
