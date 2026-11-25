@@ -1,6 +1,7 @@
 // Public-overlay proof through Caddy -> nginx -> API (Production). Run by .github/workflows/public-demo.yml.
 // Usage: node tools/public-smoke.mjs <phase>   phases: flow | after-expiry
 import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync } from 'node:fs';
 const base = process.env.PUBLIC_DEMO_URL ?? 'https://localhost';
 const equipmentId = '11111111-1111-1111-1111-111111111111';
 const phase = process.argv[2] ?? 'flow';
@@ -53,16 +54,26 @@ if (phase === 'flow') {
     state = (await call(`/api/jobs/${id}`, { token: tokenA })).json.status;
     if (state !== 'Succeeded') await new Promise((r) => setTimeout(r, 500));
   }
+  if (state !== 'Succeeded') {
+    const body = (await call(`/api/jobs/${id}`, { token: tokenA })).json;
+    console.error('Job did not succeed. status=' + state + ' body=' + JSON.stringify(body).slice(0, 1500));
+  }
   assert.equal(state, 'Succeeded');
   // 3. The mint limit is keyed on the real client address, not on a header the visitor controls.
   const codes = [];
   for (let i = 0; i < limit + 2; i++) codes.push((await mint({ 'X-Forwarded-For': `198.51.100.${i + 10}` })).status);
   assert.ok(codes.includes(429), 'rotating X-Forwarded-For must not evade the per-client mint limit: ' + codes);
   console.log('PASS flow: hidden docs/health, isolated least-privilege sessions, job finished, mint limit ignores spoofed headers');
-  console.log(JSON.stringify({ tokenA, jobId: id }));
+  const stateFile = process.env.PUBLIC_SMOKE_STATE_FILE;
+  assert.ok(stateFile, 'PUBLIC_SMOKE_STATE_FILE required');
+  writeFileSync(stateFile, JSON.stringify({ tokenA, jobId: id }));
 } else if (phase === 'after-expiry') {
-  const { tokenA, jobId } = JSON.parse(process.env.PUBLIC_SMOKE_STATE ?? '{}');
-  assert.ok(tokenA && jobId, 'PUBLIC_SMOKE_STATE required');
+  const stateFile = process.env.PUBLIC_SMOKE_STATE_FILE;
+  assert.ok(stateFile, 'PUBLIC_SMOKE_STATE_FILE required');
+  const raw = readFileSync(stateFile, 'utf8');
+  assert.ok(raw.trim().length > 0, 'state file is empty: the flow phase did not complete');
+  const { tokenA, jobId } = JSON.parse(raw);
+  assert.ok(tokenA && jobId, 'state file lacks token or job id');
   assert.equal((await call(`/api/jobs/${jobId}`, { token: tokenA })).status, 401, 'expired token must stop authenticating');
   console.log('PASS after-expiry: expired visitor token is refused');
 }
