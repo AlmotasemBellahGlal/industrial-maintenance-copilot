@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- OPT-IN, DEMO ONLY. One process for hosts that allow a single ASP.NET website (for example a free shared host):
+       the API, the reasoning and reconciliation workers, and the built Angular files. The Docker deployment
+       (tools/IndustrialCopilot.Demo, compose.yaml, compose.public.yaml) is unchanged and remains the default. -->
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/IndustrialCopilot.Api/IndustrialCopilot.Api.csproj" />
+    <ProjectReference Include="../../src/IndustrialCopilot.Worker/IndustrialCopilot.Worker.csproj" />
+    <ProjectReference Include="../IndustrialCopilot.Corpus/IndustrialCopilot.Corpus.csproj" />
+    <Compile Include="../IndustrialCopilot.Demo/DemoProvider.cs" Link="DemoProvider.cs" />
+    <Content Include="../../demo/**" Link="demo/%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="ExcludeReferencedHostSettings" BeforeTargets="_HandleFileConflictsForPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'%(ResolvedFileToPublish.RelativePath)' == 'appsettings.json' Or '%(ResolvedFileToPublish.RelativePath)' == 'appsettings.Development.json'" />
+    </ItemGroup>
+  </Target>
+</Project>
