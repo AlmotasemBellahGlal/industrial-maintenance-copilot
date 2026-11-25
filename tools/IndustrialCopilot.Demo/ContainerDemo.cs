@@ -22,9 +22,13 @@ internal static class ContainerDemo
     private static readonly Guid Equipment=Guid.Parse("11111111-1111-1111-1111-111111111111");
     public static async Task RunAsync(string[] args)
     {
+        var environment=Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        var publicMode=Environment.GetEnvironmentVariable("DEMO_PUBLIC")=="true";
+        // Public mode runs the real Production pipeline (no OpenAPI, HSTS and HTTPS enforcement on).
+        // Local mode keeps its explicit Development requirement.
         if(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER")!="true"
-            || Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")!="Development")
-            throw new InvalidOperationException("Container demo requires explicit Development container environment.");
+            || environment!=(publicMode?"Production":"Development"))
+            throw new InvalidOperationException(publicMode?"Public container demo requires the Production environment.":"Container demo requires explicit Development container environment.");
         var operation=args.Last();
         if(operation=="setup") {Setup();return;}
         if(operation=="credentials")
@@ -64,7 +68,7 @@ internal static class ContainerDemo
         using var settings=Load();
         if(operation=="api")
         {
-            await using var app=ApiHost.Build(["--environment","Development"],b=>{
+            await using var app=ApiHost.Build(["--environment",environment!],b=>{
                 b.Configuration.AddConfiguration(settings);b.WebHost.UseUrls("https://+:8443");
                 Register(b.Services,b.Configuration,()=>HostAuthentication.Identity(new HttpContextAccessor().HttpContext));
             });
@@ -76,6 +80,7 @@ internal static class ContainerDemo
         {
             builder.Services.AddSingleton(new IndustrialCopilot.Worker.ReconciliationSchedule(intervalSeconds:5));
             builder.Services.AddSingleton(new IndustrialCopilot.Worker.ReasoningSchedule(new HashSet<Guid>{Equipment},leaseSeconds:15));
+            if(publicMode)builder.Services.AddHostedService<IndustrialCopilot.Worker.DemoSessionCleanup>();
             builder.Services.AddHostedService<IndustrialCopilot.Worker.Worker>();builder.Services.AddHostedService<IndustrialCopilot.Worker.ReasoningWorker>();
         }
         using var host=builder.Build();
@@ -116,6 +121,10 @@ internal static class ContainerDemo
         // Retain the production host's safe framework logging level even though
         // its appsettings files are intentionally absent from the shared harness.
         config["Logging:LogLevel:Microsoft.AspNetCore"]="Warning";
+        if(Environment.GetEnvironmentVariable("DEMO_PUBLIC")=="true")
+        {
+            config["Demo:PublicSessions"]="true";config["Demo:EquipmentId"]=Equipment.ToString();
+        }
         foreach(var name in new[]{"Operations","Knowledge","DispatchReceiver"})
         {
             // This private demo PostgreSQL uses generated password authentication,
