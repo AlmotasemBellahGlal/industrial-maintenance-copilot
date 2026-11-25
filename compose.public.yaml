@@ -1,9 +1,44 @@
 # UNTESTED overlay for a single-host public demo. Not part of CI yet.
 # Use:  docker compose -f compose.yaml -f compose.public.yaml up -d --wait
 # Requires DEMO_DOMAIN in .env pointing at this host (A record), ports 80/443 open.
-# Does NOT solve per-visitor isolation. See deploy/public/README.md.
+# Anonymous visitors get temporary server-side sessions (Demo__PublicSessions). The API and worker
+# run as Production (no OpenAPI, HSTS and HTTPS enforcement on). X-Forwarded-For is trusted only from
+# the fixed compose subnet below. See deploy/public/README.md. Still unrun on a real host.
+x-public-env: &public-env
+  ASPNETCORE_ENVIRONMENT: Production
+  DOTNET_ENVIRONMENT: Production
+  DEMO_PUBLIC: "true"
+networks:
+  default:
+    ipam:
+      config: [{subnet: 172.29.0.0/24}]
 services:
+  setup: {environment: *public-env}
+  migrate: {environment: *public-env}
+  seed: {environment: *public-env}
+  api:
+    environment:
+      <<: *public-env
+      Demo__TrustedProxyCidr: 172.29.0.0/24
+      Demo__MaxLiveSessions: ${DEMO_MAX_LIVE_SESSIONS:-200}
+      Demo__MaxSessionsPerClientPerHour: ${DEMO_MAX_SESSIONS_PER_CLIENT_HOUR:-10}
+      Demo__SessionMinutes: ${DEMO_SESSION_MINUTES:-120}
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+  worker:
+    environment: *public-env
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+  db:
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    command: [postgres, -c, max_connections=60, -c, shared_buffers=128MB]
   web:
+    mem_limit: 128m
+    pids_limit: 128
     # Remove the loopback publish: only Caddy is reachable from outside.
     ports: !reset []
   caddy:
@@ -18,6 +53,8 @@ services:
       - caddy-config:/config
     depends_on:
       web: {condition: service_healthy}
+    mem_limit: 128m
+    pids_limit: 128
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
