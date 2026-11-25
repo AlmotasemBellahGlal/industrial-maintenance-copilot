@@ -18,8 +18,14 @@ public static class MaintenanceEndpoints
     private static HostIdentity User(HttpContext c)=>HostAuthentication.Identity(c)??throw new ApiProblemException(401,"unauthenticated");
     private static void Permit(HttpContext c,string permission,Guid equipment)
     {var user=User(c);if(!user.Permissions.Contains(permission)||!user.Equipment.Contains(equipment))throw new ApiProblemException(403,"forbidden");}
+    /// <summary>Owner-scoped reads: only the actor that started a run (or an approver) may see it. Runs without a recorded owner are approver-only.</summary>
+    private static async Task Own(HttpContext c,Guid? runId)
+    {
+        var user=User(c);if(user.Permissions.Contains("approve"))return;
+        if(runId is null||!await Service<IRunOwnership>(c).IsOwnerAsync(runId.Value,user.Actor,c.RequestAborted))throw new ApiProblemException(403,"forbidden");
+    }
     private static async Task<StoredWorkOrder> Order(HttpContext c,Guid id,string permission="read")
-    {HttpValidation.Id(id);var order=await Service<IWorkflowStore>(c).GetWorkOrderAsync(id,c.RequestAborted)??throw new ApiProblemException(404,"not_found");Permit(c,permission,order.Order.Content.EquipmentId);return order;}
+    {HttpValidation.Id(id);var order=await Service<IWorkflowStore>(c).GetWorkOrderAsync(id,c.RequestAborted)??throw new ApiProblemException(404,"not_found");Permit(c,permission,order.Order.Content.EquipmentId);await Own(c,order.MaintenanceRunId);return order;}
     public static void Map(WebApplication app)
     {
         var routes=app.MapGroup("/api").RequireAuthorization();
@@ -32,7 +38,7 @@ public static class MaintenanceEndpoints
         routes.MapPost("/runs/stream",Stream).Produces(200,contentType:"text/event-stream");
         routes.MapGet("/runs/{id:guid}",async(Guid id,HttpContext c)=>
         {
-            var run=await Service<IWorkflowStore>(c).GetRunAsync(id,c.RequestAborted)??throw new ApiProblemException(404,"not_found"); Permit(c,"read",run.Run.EquipmentId);
+            var run=await Service<IWorkflowStore>(c).GetRunAsync(id,c.RequestAborted)??throw new ApiProblemException(404,"not_found"); Permit(c,"read",run.Run.EquipmentId);await Own(c,id);
             var links=await Service<IWorkflowInspection>(c).GetLinksAsync(id,c.RequestAborted);
             return new RunResponse(id,run.Run.EquipmentId,run.Run.ReportedSymptom,run.Run.Status.ToString(),run.Run.IsCancellationRequested,links.WorkOrderIds,links.ExecutionIds);
         });
@@ -82,6 +88,7 @@ public static class MaintenanceEndpoints
         routes.MapGet("/traces/{id:guid}",async(Guid id,HttpContext c)=>
         {
             var trace=await Service<IRunTraceStore>(c).GetAsync(id,c.RequestAborted)??throw new ApiProblemException(404,"not_found");
+            await Own(c,trace.MaintenanceRunId);
             return new TraceResponse(trace.ExecutionId,trace.CorrelationId,trace.MaintenanceRunId,trace.Steps.Take(512).Select(s=>new TraceStepResponse(s.Kind.ToString(),s.OperationName,s.Status.ToString(),s.Error?.Code,s.StartedAt,s.CompletedAt,s.StepId,s.ParentStepId)).ToArray());
         });
     }
@@ -94,7 +101,9 @@ public static class MaintenanceEndpoints
         var equipment=await Service<IEquipmentContextStore>(c).GetAsync(request.EquipmentId,c.RequestAborted)??throw new ApiProblemException(404,"equipment_not_found");
         var candidates=Service<IReadOnlyList<ApprovedMaintenanceProcedure>>(c).Where(p=>p.Candidate.EquipmentId==request.EquipmentId && equipment.Manuals.Any(m=>m.ManualId==p.Candidate.DocumentId && m.ManualRevisionId==p.Candidate.ManualRevisionId)).Select(p=>p.Candidate).ToArray();
         if(candidates.Length is <1 or >8)throw new ApiProblemException(422,"procedure_coverage_missing");
-        return new(Guid.NewGuid(),(Guid)c.Items["correlation"]!,Guid.NewGuid(),Guid.NewGuid(),new(request.Symptom,candidates,[]),System.Globalization.CultureInfo.CurrentUICulture.Name);
+        var prepared=new MaintenanceReasoningRequest(Guid.NewGuid(),(Guid)c.Items["correlation"]!,Guid.NewGuid(),Guid.NewGuid(),new(request.Symptom,candidates,[]),System.Globalization.CultureInfo.CurrentUICulture.Name);
+        await Service<IRunOwnership>(c).RecordAsync(prepared.RunId,User(c).Actor,c.RequestAborted);
+        return prepared;
     }
     private sealed class ProgressWriter(ChannelWriter<MaintenanceProgress> writer,CancellationTokenSource lifetime) : IProgress<MaintenanceProgress>
     {public void Report(MaintenanceProgress value){if(!writer.TryWrite(value))lifetime.Cancel();}}
