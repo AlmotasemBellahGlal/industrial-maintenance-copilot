@@ -1,15 +1,21 @@
 using IndustrialCopilot.Application.Abstractions.Jobs;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace IndustrialCopilot.Infrastructure.Operations;
 
-public sealed class ReasoningJobExecutionScope(Func<string,Guid,bool> authorized) : IReasoningJobExecutionScope
+public sealed class ReasoningJobExecutionScope(Func<string,Guid,bool> authorized,Microsoft.Extensions.Logging.ILogger? log=null) : IReasoningJobExecutionScope
 {
     private readonly AsyncLocal<ReasoningJobClaim?> current=new();
     public ReasoningJobClaim? Current=>current.Value;
     public IDisposable Enter(ReasoningJobClaim claim)
     {
-        if(!authorized(claim.ActorId,claim.Request.Input.Candidates[0].EquipmentId)) throw new UnauthorizedAccessException("Job execution is no longer authorized.");
+        if(!authorized(claim.ActorId,claim.Request.Input.Candidates[0].EquipmentId))
+        {
+            // Ids only: never the actor secret, bearer token or credentials.
+            log?.LogWarning("Reasoning job {JobId} attempt {Attempt} denied: its actor is not authorized for the equipment",claim.JobId,claim.Attempt);
+            throw new UnauthorizedAccessException("Job execution is no longer authorized.");
+        }
         var previous=current.Value; var correlation=HostAccess.Correlation.Value;
         current.Value=claim; HostAccess.Correlation.Value=claim.Request.CorrelationId;
         return new Exit(()=>{current.Value=previous;HostAccess.Correlation.Value=correlation;});
