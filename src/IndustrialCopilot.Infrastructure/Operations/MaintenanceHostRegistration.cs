@@ -79,6 +79,7 @@ public static class MaintenanceHostRegistration
         services.AddSingleton<DispatchCoordinator>(); services.AddSingleton<ReconciliationBatch>(); services.AddSingleton<ExecutableReviewService>();
         services.AddSingleton<OperationalSchema>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<DispatchReceiverSchema>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("receiver")));
+        services.AddSingleton<IRunOwnership>(p=>new RunOwnership(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<IConversationStore>(p=>new PostgresConversationStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<ProductCatalog>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<IHistoryText>(new HistoryText(config));
