@@ -60,7 +60,7 @@ public static class MaintenanceHostRegistration
         }
         services.AddSingleton(new ReasoningJobExecutionScope((actor,equipment)=>JobIdentity(actor,equipment) is not null));
         services.AddSingleton<IReasoningJobExecutionScope>(p=>p.GetRequiredService<ReasoningJobExecutionScope>());
-        services.AddSingleton<IReasoningJobStore>(p=>new PostgresReasoningJobStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        services.AddSingleton<IReasoningJobStore>(p=>new PostgresReasoningJobStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),DemoSessionOptions.From(config)));
         services.AddSingleton<PostgresWorkflowStore>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),p.GetRequiredService<ReasoningJobExecutionScope>()));
         services.AddSingleton<IWorkflowStore>(p=>p.GetRequiredService<PostgresWorkflowStore>());
         services.AddSingleton<HostAccess>(p=>new(()=>p.GetRequiredService<ReasoningJobExecutionScope>().Current is {} job?JobIdentity(job.ActorId,job.Request.Input.Candidates[0].EquipmentId):identity(),p.GetRequiredService<PostgresWorkflowStore>(),p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),safety,procedures));
@@ -79,8 +79,9 @@ public static class MaintenanceHostRegistration
         services.AddSingleton<DispatchCoordinator>(); services.AddSingleton<ReconciliationBatch>(); services.AddSingleton<ExecutableReviewService>();
         services.AddSingleton<OperationalSchema>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<DispatchReceiverSchema>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("receiver")));
+        services.AddSingleton<IDemoSessions>(p=>new PostgresDemoSessions(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),DemoSessionOptions.From(config)));
         services.AddSingleton<IRunOwnership>(p=>new RunOwnership(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
-        services.AddSingleton<IConversationStore>(p=>new PostgresConversationStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        services.AddSingleton<IConversationStore>(p=>new PostgresConversationStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),DemoSessionOptions.From(config)));
         services.AddSingleton<ProductCatalog>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<IHistoryText>(new HistoryText(config));
         services.AddSingleton<ILlmUsageStore>(p=>new PostgresLlmUsageStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
