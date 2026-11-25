@@ -1,32 +1,44 @@
-# Public demo overlay (UNTESTED, prep only)
+# Public demo overlay (UNTESTED on a real host)
 
-Scope: TLS + closed ports + a few proxy rules around the existing synthetic demo
-stack. No C# change. The container demo still runs in Development mode
-(`tools/IndustrialCopilot.Demo/ContainerDemo.cs:24-27` requires it).
+Goal: anyone with the link can try the synthetic demo, each in a private temporary session.
+Synthetic data only. Not a production deployment. Nothing here has run on a public host yet.
 
-What this does NOT solve (verified in source):
-- Conversations are actor-scoped (`ProductEndpoints.cs:38-47`), so one shared token
-  means all visitors share one conversation list.
-- Jobs, runs, work orders and traces are equipment-scoped, not owner-scoped
-  (`ReasoningJobEndpoints.cs:13-14`, `MaintenanceEndpoints.cs:33-45`): any holder of a
-  token for the demo equipment can read any run/job by ID.
-- Rate limit is 30 POST/min per actor (`ApiSecurity.cs`), shared by every holder of a token.
-- No cap on stored runs/jobs was found.
-Do not publish a token publicly. Give each reviewer a separate Technician token
-only after a threat review of how tokens are issued and revoked.
+## How visitors get access
+- The Connection page shows "Try the demo" when the host enables `Demo__PublicSessions`.
+  One click calls `POST /api/demo/session`, which returns a random 256-bit bearer token
+  (`dms_...`, 47 chars) and an expiry. The server stores only its SHA-256.
+- The token lives in browser memory only. Reload or a new tab discards it in that browser
+  (a tab opened from a page may or may not share state; do not rely on it). The server keeps the
+  session until it expires (default 120 minutes, not sliding).
+- Rights are fixed: `read` and `start` on the demo equipment. Never approve, verify, dispatch or ingest.
+- Isolation: conversations, jobs, runs, work orders, evidence and traces are owned by the session's
+  actor id (migration 008 and the owner checks), so one visitor cannot read another's items by ID.
 
-Validation checklist before any public use: see the PR description.
+## Limits (all configurable; defaults shown)
+- Mint: 10 sessions per client per hour, 200 live sessions, refuse when stored jobs+conversations >= 20000
+  (`Demo__MaxSessionsPerClientPerHour`, `Demo__MaxLiveSessions`, `Demo__MaxStoredRows`). Checked and
+  inserted under one Postgres advisory lock, so concurrent mints cannot overshoot.
+- Mint HTTP limiter, separate from actor budgets: 6/min per client address and 120/min overall
+  (`Security__MintPermitsPerClientPerMinute`, `Security__MintPermitsPerMinute`).
+- Per actor: 30 mutating POST/min, 3 active jobs, 25 active total, 200 jobs per session lifetime.
+- Containers: api and worker 768 MB / 1 CPU, db 1 GB / 1 CPU, web and caddy 128 MB, pids limits.
+- Client address: `X-Forwarded-For` is trusted only from `Demo__TrustedProxyCidr` (the fixed compose
+  subnet 172.29.0.0/24); Caddy overwrites the header with the real peer. Otherwise it is ignored.
 
-## Application changes (validated with dotnet 10 + Postgres/pgvector 16 where noted)
-- Jobs are owner-scoped (`ReasoningJobEndpoints.Read`; approvers excepted). Snapshot carries `Actor`.
-- Runs, work orders, evidence, dispatch attempts and traces are owner-scoped via a new
-  `operations.run_owners` table (migration 008, `RunOwnership`/`IRunOwnership`), written in
-  `MaintenanceEndpoints.Prepare` (used by /runs, /runs/stream and /jobs). Non-approvers must be the
-  owner; runs with no recorded owner (created before the migration) are approver-only.
-  Approvers (permission `approve`) can read everything, as before. Traces already had an
-  equipment check inside the store (`HostAccess.CanAccessTraceAsync`); ownership is added on top.
-- Active-job cap: 3 per actor, 25 total, HTTP 429. A global advisory lock serializes the check
-  (always taken after the per-actor lock), so concurrent submissions cannot overshoot.
-- Angular: synthetic-demo notice (English + Arabic).
-Not changed: Development mode, 30 POST/min per actor, no demo reset, usage is already
-filtered by actor and equipment (`PostgresLlmUsageStore.QueryAsync`), TLS overlay is untested.
+## Cleanup
+The worker removes expired sessions every 60 s and deletes only data owned by those actors
+(never seeded equipment, manuals or knowledge chunks). Sessions with queued/running jobs or any
+dispatch history are skipped. There is no volume wipe and no cron.
+
+## Mode
+The API, worker and setup run as `Production` through `DEMO_PUBLIC=true`: no OpenAPI, HSTS and
+HTTPS enforcement on. Caddy still returns 404 for `/openapi*`, `/scalar*`, `/health/*` as a second layer.
+The local and CI demo keeps its Development requirement.
+
+## Known gaps
+- Not run on a real host: TLS issuance, the Caddy header handling, Production startup inside the
+  container, and the compose limits are untested. Test them before sharing a link.
+- IP limits do not stop a distributed flood. A captcha or edge protection would be the next layer.
+- Conversations have no per-session row cap (the global stored-row guard bounds new sessions only).
+- A hosting plan has no hard spend cap; synthetic mode removes AI provider cost, not server or
+  bandwidth cost.
