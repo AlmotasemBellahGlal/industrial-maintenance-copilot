@@ -76,7 +76,15 @@ jobs:
           node tools/public-smoke.mjs after-expiry
       - name: Logs on failure
         if: failure()
-        run: docker compose logs --no-color migrate seed api worker web caddy | grep -v -e "Reconciliation inspected" -e "IndustrialCopilot.Worker.Worker\[0\]" | tail -300
+        run: |
+          echo "== worker (reconciliation and request noise removed)"
+          docker compose logs --no-color worker | grep -v -e "Reconciliation inspected" -e "IndustrialCopilot.Worker.Worker\[0\]" | tail -120 || true
+          echo "== api (request log removed)"
+          docker compose logs --no-color migrate seed api | grep -v -e "Security HTTP" | tail -80 || true
+          echo "== latest run traces (payload, first 3000 chars each)"
+          docker compose exec -T db psql -U postgres -d maintenance_demo -At -c "SELECT left(payload::text,3000) FROM operations.traces ORDER BY version DESC LIMIT 3" || true
+          echo "== reasoning jobs"
+          docker compose exec -T db psql -U postgres -d maintenance_demo -At -c "SELECT id, status, phase, failure_code, left(actor,24) FROM operations.reasoning_jobs ORDER BY created_at DESC LIMIT 5" || true
       - name: Stop stack
         if: always()
         run: docker compose down -v
