@@ -81,7 +81,15 @@
         (session.connected() ? 'Credential configured' : 'Connect to host') | t
       }}</a>
     </header>
-    <main id="main" tabindex="-1"><router-outlet /></main>
+    <main id="main" tabindex="-1">
+      <p class="demo-notice" role="note">
+        {{
+          'Synthetic demo: scripted test data and a test provider, not a real AI model. Answers outside the sample scenarios are not representative. Not for real equipment.'
+            | t
+        }}
+      </p>
+      <router-outlet />
+    </main>
     <footer>
       {{ 'Evidence informs decisions. The trusted host enforces safety and permissions.' | t }}
     </footer>
