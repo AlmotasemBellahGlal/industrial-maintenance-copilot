@@ -33,7 +33,8 @@ public static class ProductEndpoints
             if(!Can(c,"read",request.EquipmentId))return Fail(c,403,"forbidden");
             if(!await catalog.ContainsAsync(request.EquipmentId,request.DocumentId,request.ManualRevisionId,c.RequestAborted))return Fail(c,404,"not_found");
             var culture=CultureInfo.CurrentUICulture.TwoLetterISOLanguageName=="ar"?"ar-EG":"en-US";
-            return Results.Ok(await store.CreateAsync(Actor(c),request.EquipmentId,request.DocumentId,request.ManualRevisionId,culture,c.RequestAborted));
+            try {return Results.Ok(await store.CreateAsync(Actor(c),request.EquipmentId,request.DocumentId,request.ManualRevisionId,culture,c.RequestAborted));}
+            catch(DemoLimitException) {c.Response.Headers.RetryAfter="300";return Fail(c,429,"demo_limit");}
         });
         api.MapGet("/conversations",async(HttpContext c,[FromServices] IConversationStore store,int offset=0,int limit=20)=>{
             if(offset<0||offset>10000||limit is <1 or >50)return Fail(c,400,"invalid_request");
@@ -63,7 +64,9 @@ public static class ProductEndpoints
         var correlation=(Guid)c.Items["correlation"]!;
         using var usage=new LlmCallScope(new UsageContext(actor,correlation,conversation.EquipmentId,Purpose:UsagePurpose.Ask));
         var safeQuestion=history.Sanitize(question.Text);
-        var turn=await store.BeginAsync(actor,id,safeQuestion[..Math.Min(2000,safeQuestion.Length)],correlation,c.RequestAborted);
+        Guid? turn;
+        try {turn=await store.BeginAsync(actor,id,safeQuestion[..Math.Min(2000,safeQuestion.Length)],correlation,c.RequestAborted);}
+        catch(DemoLimitException) {c.Response.Headers.RetryAfter="300";await Fail(c,429,"demo_limit").ExecuteAsync(c);return;}
         if(turn is null){await Fail(c,409,"conversation_busy").ExecuteAsync(c);return;}
         using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(limits.TimeoutSeconds));
         using var linked=CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted,timeout.Token);

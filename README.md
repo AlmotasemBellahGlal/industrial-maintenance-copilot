@@ -45,6 +45,27 @@ before dispatch.
 
 ---
 
+## Live Public Demo (synthetic, free host)
+
+Try it without installing anything: https://maintenance-copilot-demo.runasp.net/
+
+This is the opt-in single-host build (`tools/IndustrialCopilot.SingleHost`) on a free MonsterASP.NET site with a free PostgreSQL database. It is a demo of the workflow, not a production deployment. It uses scripted synthetic data and the deterministic test provider, **not a real AI model**, so answers outside the sample scenarios are not representative. Not for real equipment.
+
+How to try it:
+
+1. Open **Connection** and press **Start demo session**. This gives you a private temporary session (read and start rights only; it cannot approve, verify, dispatch or ingest).
+2. Open **New diagnosis**. The fields are not prefilled. Enter equipment `11111111-1111-1111-1111-111111111111` and the symptom `pump vibration and seal leakage`, then press **Start grounded diagnosis**. You should see the three agent stages, the trusted safety check, and a work order that stops at "Waiting for approval".
+3. Optional, **Ask with citations**: open *New conversation* and enter equipment `11111111-1111-1111-1111-111111111111`, document `22222222-2222-2222-2222-222222222222`, revision `33333333-3333-3333-3333-333333333333`. Ask the single word `vibration` to get cited manual text. Full-sentence questions can return "Not enough matching evidence", because the synthetic retrieval only matches a few features.
+
+Limits to expect:
+
+- Sessions are temporary (about two hours) and the token lives in browser memory only: a reload ends your session in that browser.
+- The host caps live sessions and sessions per client per hour. If it says it is full, try again later.
+- It runs only over HTTPS. The free host may be slow on the first request after idle time.
+- Free hosting has no backups and no uptime guarantee, so the link can change or disappear.
+- The deployed build comes from the `prep/public-demo-overlay` branch (PR #47), not from `main`.
+- Verified live on the deployed site: session start, a full diagnosis, cited answers, and that a second session cannot read the first session's conversations. Not verified: behavior under load and idle sleep timing.
+
 ## Docker-Only Evaluator Quick Start
 
 **15-minute path. You need only Docker Desktop and Git.**

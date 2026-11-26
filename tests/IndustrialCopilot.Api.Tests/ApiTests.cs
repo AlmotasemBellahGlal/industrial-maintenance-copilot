@@ -1,3 +1,4 @@
+using IndustrialCopilot.Infrastructure.Operations;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -87,7 +88,7 @@ public class ApiTests
                     ["Security:MutationPermits"]=permits.ToString(),["Security:AllowedOrigins:0"]="http://127.0.0.1:4300",
                     ["Authentication:Credentials:1:Actor"]="technician",["Authentication:Credentials:1:Secret"]=new('t',32),
                     ["Authentication:Credentials:1:Permissions"]="read,start",["Authentication:Credentials:1:EquipmentIds"]=Scenario.Candidate.EquipmentId.ToString()});
-                b.Services.AddSingleton<IWorkflowStore>(Scenario.Store);b.Services.AddSingleton<IRunTraceStore>(Scenario.Trace);
+                b.Services.AddSingleton<IRunOwnership>(new MemoryRunOwnership());b.Services.AddSingleton<IWorkflowStore>(Scenario.Store);b.Services.AddSingleton<IRunTraceStore>(Scenario.Trace);
                 b.Services.AddSingleton(Scenario.Orchestrator());b.Services.AddSingleton<IExecutableSafetyPolicy>(Scenario.Policy());
                 b.Services.AddSingleton<IReadOnlyList<ApprovedMaintenanceProcedure>>(new[]{new ApprovedMaintenanceProcedure(Scenario.Candidate,["Check vibration"],["Inspect seal"],"Inspect isolated pump",[Scenario.Requirement])});
                 b.Services.AddSingleton<IEquipmentContextStore>(this);b.Services.AddSingleton<IWorkflowInspection>(this);
@@ -213,7 +214,8 @@ public class ApiTests
         var workflow=(await (await h.StartRun()).Content.ReadFromJsonAsync<WorkflowResponse>())!;
         var review=(await h.Client.GetFromJsonAsync<ReviewResponse>("/api/work-orders/"+workflow.WorkOrderId))!;
         h.Client.DefaultRequestHeaders.Authorization=new("Bearer",new string('t',32));
-        Assert.Equal(HttpStatusCode.OK,(await h.Client.GetAsync("/api/work-orders/"+workflow.WorkOrderId)).StatusCode);
+        // Owner-scoped reads: the technician did not start this run, so cannot read its work order.
+        Assert.Equal(HttpStatusCode.Forbidden,(await h.Client.GetAsync("/api/work-orders/"+workflow.WorkOrderId)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,(await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/decisions",new DecisionRequest(review.Target,"Approve"))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,(await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/verifications",new VerificationRequest(review.Target,h.Scenario.Requirement.Id,"physical",true))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,(await h.Client.PostAsJsonAsync($"/api/work-orders/{workflow.WorkOrderId}/dispatch",review.Target)).StatusCode);
@@ -265,4 +267,11 @@ public class ApiTests
         Assert.Contains("https_required",await response.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.NotFound,(await h.Client.GetAsync("/openapi/v1.json")).StatusCode);
     }
+}
+
+internal sealed class MemoryRunOwnership:IRunOwnership
+{
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid,string> owners=new();
+    public Task RecordAsync(Guid runId,string actor,CancellationToken ct){owners.TryAdd(runId,actor);return Task.CompletedTask;}
+    public Task<bool> IsOwnerAsync(Guid runId,string actor,CancellationToken ct)=>Task.FromResult(owners.TryGetValue(runId,out var owner)&&owner==actor);
 }

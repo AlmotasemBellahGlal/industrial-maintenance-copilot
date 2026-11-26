@@ -12,8 +12,11 @@ using static IndustrialCopilot.Infrastructure.Operations.OperationalSql;
 namespace IndustrialCopilot.Infrastructure.Operations;
 
 /// <summary>Short transactions only; no connection or database lock is held across model calls.</summary>
-public sealed class PostgresReasoningJobStore(NpgsqlDataSource source) : IReasoningJobStore
+public sealed class PostgresReasoningJobStore(NpgsqlDataSource source,DemoSessionOptions? demo=null) : IReasoningJobStore
 {
+    private readonly DemoSessionOptions demoLimits=demo??new();
+    /// <summary>Bounds on queued+running jobs so one actor or a burst cannot exhaust the worker or storage.</summary>
+    public const int MaxActiveJobsPerActor=3, MaxActiveJobsTotal=25, MaxJobsPerActor=200;
     public Task<ReasoningJobSnapshot> SubmitAsync(ReasoningJobSubmission submission,CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(submission);
@@ -32,6 +35,22 @@ public sealed class PostgresReasoningJobStore(NpgsqlDataSource source) : IReason
                     if(await reader.ReadAsync(ct)) { if(reader.GetString(1)!=hash) throw new JobSubmissionConflictException(); existingId=reader.GetGuid(0); }
                 if(existingId.HasValue) return (await Load(c,t,existingId.Value,ct))!;
             }
+            // Global gate so the total cap cannot be overshot by concurrent submissions from different actors.
+            // Lock order is always actor key first, then this key, so submissions cannot deadlock.
+            await Execute(c,t,"SELECT pg_advisory_xact_lock(hashtextextended('reasoning-job-capacity',0))",ct);
+            await using(var active=Command(c,t,"SELECT count(*) FILTER (WHERE actor=@actor), count(*), (SELECT count(*) FROM operations.reasoning_jobs WHERE actor=@actor) FROM operations.reasoning_jobs WHERE status IN (1,2)",("actor",submission.ActorId)))
+            await using(var counts=await active.ExecuteReaderAsync(ct))
+            {
+                await counts.ReadAsync(ct);
+                if(counts.GetInt64(0)>=MaxActiveJobsPerActor || counts.GetInt64(1)>=MaxActiveJobsTotal || counts.GetInt64(2)>=MaxJobsPerActor) throw new JobCapacityException();
+            }
+            if(DemoGrowth.IsVisitor(submission.ActorId))
+            {
+                // Visitor growth is bounded globally at the write: a session minted earlier cannot exceed it.
+                await DemoGrowth.Lock(c,t,ct);
+                try { await DemoGrowth.EnsureAsync(c,t,submission.ActorId,null,"job",demoLimits,ct); }
+                catch(DemoLimitException) { throw new JobCapacityException(); }
+            }
             var id=Guid.NewGuid();var equipment=input.Candidates[0].EquipmentId;
             await Execute(c,t,"INSERT INTO operations.runs(id,equipment_id,symptom,status,cancellation_requested,token) VALUES(@run,@equipment,@symptom,1,false,@token)",ct,
                 ("run",r.RunId),("equipment",equipment),("symptom",input.ReportedSymptom),("token",Guid.NewGuid()));
@@ -48,11 +67,11 @@ public sealed class PostgresReasoningJobStore(NpgsqlDataSource source) : IReason
     private static async Task<ReasoningJobSnapshot?> Load(NpgsqlConnection c,NpgsqlTransaction t,Guid id,CancellationToken ct)
     {
         ReasoningJobSnapshot value;
-        await using(var cmd=Command(c,t,"SELECT run_id,equipment_id,correlation_id,status,phase,created_at,updated_at,cancellation_requested,version,result::text,failure_code FROM operations.reasoning_jobs WHERE id=@id FOR SHARE",("id",id)))
+        await using(var cmd=Command(c,t,"SELECT run_id,equipment_id,correlation_id,status,phase,created_at,updated_at,cancellation_requested,version,result::text,failure_code,actor FROM operations.reasoning_jobs WHERE id=@id FOR SHARE",("id",id)))
         await using(var r=await cmd.ExecuteReaderAsync(ct))
         {
             if(!await r.ReadAsync(ct)) return null;
-            value=new(id,r.GetGuid(0),r.GetGuid(1),r.GetGuid(2),(ReasoningJobStatus)r.GetInt32(3),(ReasoningJobPhase)r.GetInt32(4),r.GetFieldValue<DateTimeOffset>(5),r.GetFieldValue<DateTimeOffset>(6),r.GetBoolean(7),r.GetInt64(8),[],r.IsDBNull(9)?null:JsonSerializer.Deserialize<MaintenanceReasoningResult>(r.GetString(9)),r.IsDBNull(10)?null:r.GetString(10));
+            value=new(id,r.GetGuid(0),r.GetGuid(1),r.GetGuid(2),(ReasoningJobStatus)r.GetInt32(3),(ReasoningJobPhase)r.GetInt32(4),r.GetFieldValue<DateTimeOffset>(5),r.GetFieldValue<DateTimeOffset>(6),r.GetBoolean(7),r.GetInt64(8),[],r.IsDBNull(9)?null:JsonSerializer.Deserialize<MaintenanceReasoningResult>(r.GetString(9)),r.IsDBNull(10)?null:r.GetString(10)){Actor=r.GetString(11)};
         }
         var attempts=new List<ReasoningJobAttempt>();
         await using(var cmd=Command(c,t,"SELECT attempt,execution_id,started_at,ended_at,failure_code FROM operations.reasoning_job_attempts WHERE job_id=@id ORDER BY attempt",("id",id)))

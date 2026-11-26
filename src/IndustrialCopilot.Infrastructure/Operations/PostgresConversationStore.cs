@@ -3,13 +3,15 @@ using IndustrialCopilot.Application.Ask;
 using Npgsql;
 namespace IndustrialCopilot.Infrastructure.Operations;
 
-public sealed class PostgresConversationStore(NpgsqlDataSource source) : IConversationStore
+public sealed class PostgresConversationStore(NpgsqlDataSource source,DemoSessionOptions? demo=null) : IConversationStore
 {
+    private readonly DemoSessionOptions limits=demo??new();
     public Task<Conversation> CreateAsync(string actor,Guid equipment,Guid document,Guid revision,string culture,CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(actor);
         if(equipment==Guid.Empty || document==Guid.Empty || revision==Guid.Empty || culture is not ("en-US" or "ar-EG")) throw new ArgumentException();
         return OperationalSql.Run(source,async(c,t)=>{
+            if(DemoGrowth.IsVisitor(actor)){await DemoGrowth.Lock(c,t,ct);await DemoGrowth.EnsureAsync(c,t,actor,null,"conversation",limits,ct);}
             var id=Guid.NewGuid();
             await using var cmd=OperationalSql.Command(c,t,"""
                 INSERT INTO operations.conversations(id,actor,equipment_id,document_id,revision_id,culture)
@@ -54,7 +56,11 @@ public sealed class PostgresConversationStore(NpgsqlDataSource source) : IConver
         },ct);
     }
     public Task<Guid?> BeginAsync(string actor,Guid id,string safeQuestion,Guid correlation,CancellationToken ct)=>OperationalSql.Run<Guid?>(source,async(c,t)=>{
+        // Growth lock first, then the conversation row: same order as cleanup, so they cannot deadlock.
+        var visitor=DemoGrowth.IsVisitor(actor);
+        if(visitor)await DemoGrowth.Lock(c,t,ct);
         if(!await Lock(c,t,actor,id,ct))return null;
+        if(visitor)await DemoGrowth.EnsureAsync(c,t,actor,id,"turn",limits,ct);
         var turn=Guid.NewGuid();
         await using var cmd=OperationalSql.Command(c,t,"""
             INSERT INTO operations.ask_turns(id,conversation_id,question,correlation_id)

@@ -49,8 +49,16 @@ public static class MaintenanceHostRegistration
         if(config["Dispatch:Adapter"]!="PostgresInbox") throw new InvalidOperationException("An explicit supported dispatch adapter is required.");
         services.AddKeyedSingleton<NpgsqlDataSource>("operations",(_,_)=>NpgsqlDataSource.Create(operations));
         services.AddKeyedSingleton<NpgsqlDataSource>("receiver",(_,_)=>NpgsqlDataSource.Create(receiver));
+        var visitorSessions=new Lazy<VisitorSessionCheck>(()=>new(NpgsqlDataSource.Create(operations)));
         HostIdentity? JobIdentity(string actor,Guid equipment)
         {
+            // Visitor actors are minted into operations.demo_sessions, not configuration. Without this the worker
+            // would refuse every visitor job as unauthorized. Same fixed rights as the API gives a session.
+            if(DemoGrowth.IsVisitor(actor))
+            {
+                if(config["Demo:PublicSessions"]!="true" || !Guid.TryParse(config["Demo:EquipmentId"],out var demoEquipment) || demoEquipment!=equipment) return null;
+                return visitorSessions.Value.IsLive(actor)?new(actor,new HashSet<string>{"read","start"},new HashSet<Guid>{equipment}):null;
+            }
             var entry=config.GetSection("Authentication:Credentials").GetChildren().SingleOrDefault(e=>e["Actor"]==actor);
             if(entry is null) return null;
             var permissions=(entry["Permissions"]??"").Split(',',StringSplitOptions.RemoveEmptyEntries).ToHashSet();
@@ -58,9 +66,9 @@ public static class MaintenanceHostRegistration
             return permissions.Contains("read") && permissions.Contains("start") && ids.Contains(equipment)
                 ?new(actor,new HashSet<string>{"read","start"},new HashSet<Guid>{equipment}):null;
         }
-        services.AddSingleton(new ReasoningJobExecutionScope((actor,equipment)=>JobIdentity(actor,equipment) is not null));
+        services.AddSingleton(p=>new ReasoningJobExecutionScope((actor,equipment)=>JobIdentity(actor,equipment) is not null,p.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()?.CreateLogger("IndustrialCopilot.ReasoningJobAuthorization")));
         services.AddSingleton<IReasoningJobExecutionScope>(p=>p.GetRequiredService<ReasoningJobExecutionScope>());
-        services.AddSingleton<IReasoningJobStore>(p=>new PostgresReasoningJobStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        services.AddSingleton<IReasoningJobStore>(p=>new PostgresReasoningJobStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),DemoSessionOptions.From(config)));
         services.AddSingleton<PostgresWorkflowStore>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),p.GetRequiredService<ReasoningJobExecutionScope>()));
         services.AddSingleton<IWorkflowStore>(p=>p.GetRequiredService<PostgresWorkflowStore>());
         services.AddSingleton<HostAccess>(p=>new(()=>p.GetRequiredService<ReasoningJobExecutionScope>().Current is {} job?JobIdentity(job.ActorId,job.Request.Input.Candidates[0].EquipmentId):identity(),p.GetRequiredService<PostgresWorkflowStore>(),p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),safety,procedures));
@@ -79,7 +87,9 @@ public static class MaintenanceHostRegistration
         services.AddSingleton<DispatchCoordinator>(); services.AddSingleton<ReconciliationBatch>(); services.AddSingleton<ExecutableReviewService>();
         services.AddSingleton<OperationalSchema>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<DispatchReceiverSchema>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("receiver")));
-        services.AddSingleton<IConversationStore>(p=>new PostgresConversationStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        services.AddSingleton<IDemoSessions>(p=>new PostgresDemoSessions(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),DemoSessionOptions.From(config)));
+        services.AddSingleton<IRunOwnership>(p=>new RunOwnership(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
+        services.AddSingleton<IConversationStore>(p=>new PostgresConversationStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations"),DemoSessionOptions.From(config)));
         services.AddSingleton<ProductCatalog>(p=>new(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));
         services.AddSingleton<IHistoryText>(new HistoryText(config));
         services.AddSingleton<ILlmUsageStore>(p=>new PostgresLlmUsageStore(p.GetRequiredKeyedService<NpgsqlDataSource>("operations")));

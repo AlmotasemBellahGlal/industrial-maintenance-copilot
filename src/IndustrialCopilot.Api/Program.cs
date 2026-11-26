@@ -70,6 +70,14 @@ public static class ApiHost
             o.ApplyCurrentCultureToResponseHeaders=true;
         });
         builder.Services.ConfigureHttpJsonOptions(o=>o.SerializerOptions.UnmappedMemberHandling=JsonUnmappedMemberHandling.Disallow);
+        var publicSessions=builder.Configuration["Demo:PublicSessions"]=="true";
+        if(publicSessions)
+        {
+            if(!Guid.TryParse(builder.Configuration["Demo:EquipmentId"],out var demoEquipment)||demoEquipment==Guid.Empty)throw new InvalidOperationException("Demo:EquipmentId is required for public sessions.");
+            // Fixed, least-privilege rights: look and start only. Never approve, verify, dispatch or ingest.
+            builder.Services.AddSingleton(new DemoSessionPolicy(new HashSet<string>{"read","start"},new HashSet<Guid>{demoEquipment}));
+            DemoSessionEndpoints.ConfigureForwarding(builder);
+        }
         builder.Services.AddSingleton(HostAuthentication.Read(builder.Configuration));
         builder.Services.AddAuthentication("HostCredential").AddScheme<AuthenticationSchemeOptions,HostAuthentication>("HostCredential",_=>{});
         builder.Services.AddAuthorization();
@@ -78,6 +86,7 @@ public static class ApiHost
         int Number(string key,int fallback)=>builder.Configuration[key] is {} text?int.Parse(text):fallback;
         builder.Services.AddSingleton(new StreamingOptions(Number("Streaming:Capacity",32),Number("Streaming:WriteTimeoutSeconds",10)));
         var app=builder.Build();
+        if(publicSessions&&!string.IsNullOrWhiteSpace(builder.Configuration["Demo:TrustedProxyCidr"]))app.UseForwardedHeaders();
         app.UseRequestLocalization();
         if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing")) app.UseHsts();
         app.Use(async (context, next) =>
@@ -152,6 +161,7 @@ public static class ApiHost
             catch{return Results.StatusCode(503);}
         });
         if(app.Environment.IsDevelopment())app.MapOpenApi();
+        if(publicSessions)DemoSessionEndpoints.Map(app,DemoSessionOptions.From(builder.Configuration));
         MaintenanceEndpoints.Map(app); ProductEndpoints.Map(app); UsageEndpoints.Map(app); ReasoningJobEndpoints.Map(app);
         return app;
     }

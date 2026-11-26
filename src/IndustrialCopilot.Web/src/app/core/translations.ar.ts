@@ -16,6 +16,8 @@ export const arabic: Readonly<Record<string, string>> = {
   TimedOut: 'انتهت المهلة',
   Conflict: 'تعارض',
   NotDispatchable: 'غير مؤهل للإرسال',
+  'Synthetic demo: scripted test data and a test provider, not a real AI model. Answers outside the sample scenarios are not representative. Not for real equipment.':
+    'نسخة تجريبية: بيانات اختبار ومزوّد اختبار، وليست نموذج ذكاء اصطناعي حقيقي. الإجابات خارج السيناريوهات النموذجية غير ممثلة. غير مخصصة لمعدات حقيقية.',
   'Skip to main content': 'انتقل إلى المحتوى الرئيسي',
   'Maintenance Copilot home': 'الصفحة الرئيسية لمساعد الصيانة',
   MAINTENANCE: 'الصيانة',
@@ -119,6 +121,18 @@ export const arabic: Readonly<Record<string, string>> = {
     'ألصق بيانات الاعتماد التي أعدها المسؤول. لا تستبدلها بمعرّف مستخدم.',
   'Enter a credential between 32 and 512 characters.':
     'أدخل بيانات اعتماد بطول من ٣٢ إلى ٥١٢ حرفًا.',
+  'Try the demo': 'جرّب العرض التجريبي',
+  'Start a temporary session with synthetic data only. Your work is private to this session and is deleted after it expires. Reloading this page discards the session in this browser; the server keeps it until it expires.':
+    'ابدأ جلسة مؤقتة ببيانات تجريبية فقط. عملك خاص بهذه الجلسة ويُحذف بعد انتهائها. إعادة تحميل الصفحة تُلغي الجلسة في هذا المتصفح، ويحتفظ الخادم بها حتى تنتهي.',
+  'Start demo session': 'ابدأ جلسة تجريبية',
+  'Starting…': 'جارٍ البدء…',
+  'Demo session started. It expires automatically; start another if it ends.':
+    'بدأت الجلسة التجريبية. تنتهي تلقائيًا؛ ابدأ جلسة أخرى عند انتهائها.',
+  'Too many demo sessions from your network. Try again later.':
+    'عدد كبير من الجلسات التجريبية من شبكتك. حاول لاحقًا.',
+  'The demo is full right now. Try again in a few minutes.':
+    'العرض التجريبي ممتلئ الآن. حاول بعد دقائق.',
+  'Could not start a demo session.': 'تعذّر بدء جلسة تجريبية.',
   'Use credential': 'استخدام بيانات الاعتماد',
   'Clear session': 'مسح الجلسة',
   'API readiness': 'جاهزية واجهة البرمجة',

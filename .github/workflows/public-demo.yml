@@ -1,0 +1,90 @@
+name: Public demo overlay
+
+# Exercises the public overlay (Production API, Caddy TLS, anonymous sessions, cleanup) on a real Docker host.
+# Separate from ci.yml so the legacy Development stack proof is untouched.
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  public-overlay:
+    name: "Public overlay - Production container, TLS proxy, sessions, cleanup"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      COMPOSE_PROJECT_NAME: public-ci
+      COMPOSE_FILE: compose.yaml:compose.public.yaml
+      DEMO_MAX_SESSIONS_PER_CLIENT_HOUR: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+      - name: Start the public overlay
+        run: |
+          cp .env.example .env
+          echo 'DEMO_DOMAIN=localhost' >> .env
+          docker compose config --quiet
+          docker compose --profile tools build --builder default api web
+          docker compose up -d --wait
+          # Same corpus ingestion as ci.yml; without it reasoning jobs have no manuals to cite.
+          docker compose --profile tools run --rm --no-deps corpus
+      - name: API runs as Production
+        run: |
+          docker inspect "$(docker compose ps -q api)" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -x 'ASPNETCORE_ENVIRONMENT=Production'
+          docker inspect "$(docker compose ps -q worker)" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -x 'ASPNETCORE_ENVIRONMENT=Production'
+      - name: Trust the Caddy local CA
+        run: |
+          for i in $(seq 1 30); do docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt "$RUNNER_TEMP/caddy-root.crt" 2>/dev/null && break; sleep 2; done
+          test -s "$RUNNER_TEMP/caddy-root.crt"
+      - name: Sessions, isolation, limits through the proxy
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/caddy-root.crt
+        run: |
+          PUBLIC_SMOKE_STATE_FILE="$RUNNER_TEMP/public-smoke-state.json" node tools/public-smoke.mjs flow
+          test -s "$RUNNER_TEMP/public-smoke-state.json"
+      - name: Expired sessions are cleaned up without touching seeded data
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/caddy-root.crt
+          PUBLIC_SMOKE_STATE_FILE: ${{ runner.temp }}/public-smoke-state.json
+        run: |
+          sql() { docker compose exec -T db psql -U postgres -d maintenance_demo -At -c "$1"; }
+          manuals=$(sql "SELECT count(*) FROM operations.manuals")
+          echo "manuals=$manuals"
+          test "$manuals" -ge 1
+          sessions=$(sql "SELECT count(*) FROM operations.demo_sessions")
+          echo "sessions before forced expiry=$sessions"
+          test "$sessions" -ge 2
+          sql "UPDATE operations.demo_sessions SET expires_at = clock_timestamp() - interval '1 minute'"
+          for i in $(seq 1 40); do
+            left=$(sql "SELECT count(*) FROM operations.demo_sessions")
+            [ "$left" = "0" ] && break
+            sleep 5
+          done
+          echo "sessions after cleanup=$left"
+          test "$left" = "0"
+          jobs=$(sql "SELECT count(*) FROM operations.reasoning_jobs WHERE actor LIKE 'visitor-%'")
+          echo "visitor jobs after cleanup=$jobs"
+          test "$jobs" = "0"
+          after=$(sql "SELECT count(*) FROM operations.manuals")
+          echo "manuals after cleanup=$after"
+          test "$after" = "$manuals"
+          node tools/public-smoke.mjs after-expiry
+      - name: Logs on failure
+        if: failure()
+        run: |
+          echo "== worker (reconciliation and request noise removed)"
+          docker compose logs --no-color worker | grep -v -e "Reconciliation inspected" -e "IndustrialCopilot.Worker.Worker\[0\]" | tail -120 || true
+          echo "== api (request log removed)"
+          docker compose logs --no-color migrate seed api | grep -v -e "Security HTTP" | tail -80 || true
+          echo "== latest run traces (payload, first 3000 chars each)"
+          docker compose exec -T db psql -U postgres -d maintenance_demo -At -c "SELECT left(payload::text,3000) FROM operations.traces ORDER BY version DESC LIMIT 3" || true
+          echo "== reasoning jobs"
+          docker compose exec -T db psql -U postgres -d maintenance_demo -At -c "SELECT id, status, phase, failure_code, left(actor,24) FROM operations.reasoning_jobs ORDER BY created_at DESC LIMIT 5" || true
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
